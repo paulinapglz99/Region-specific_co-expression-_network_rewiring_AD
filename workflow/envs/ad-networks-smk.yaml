@@ -1,0 +1,13 @@
+# Driver environment: runs Snakemake itself.
+
+name: ad-networks-smk
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - python=3.12
+  - snakemake=9.27.1
+  - snakefmt=2.1.0
+  - snakedeploy=0.18.1
+  - pandas=2.3.3

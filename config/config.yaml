@@ -1,0 +1,37 @@
+# Table of Synapse files to download.
+# Columns: syn_id, category (data | metadata | DE), filename, description
+synapse_files: config/synapse_files.tsv
+
+# Brain regions per study (values of the 'tissue' column in the covariates file)
+regions:
+  ROSMAP: [DLPFC, ACC, PCC]
+  Mayo: [TCX, CBE]
+
+# Diagnosis groups to keep (values of the 'diagnosis' column)
+diagnoses: [AD, CT]
+
+# Subsampling designs (see docs/experimental_design.md)
+subsampling:
+  replicates: 5 # 5 to test the pipeline, 30 for the paper
+  seed: 2026
+
+  # 2. Same n in every network, to test if the region ranking depends on n
+  equal_n:
+    rosmap_n90:
+      n: 90
+      regions: [DLPFC, ACC, PCC]
+    all_n60:
+      n: 60
+      regions: [DLPFC, ACC, PCC, TCX, CBE]
+
+  # 3. Reproducibility curve: two disjoint subsamples of size n from one group
+  curve:
+    - {region: DLPFC, dx: AD, n: [60, 80, 100, 140]} # calibration
+    - {region: DLPFC, dx: CT, n: [60, 70]} # validation
+    - {region: ACC, dx: AD, n: [60, 85]} # validation
+    - {region: PCC, dx: AD, n: [60, 75]} # validation
+
+  # 4. Paired design: only donors sampled in both regions
+  paired:
+    - [DLPFC, PCC]
+    - [DLPFC, ACC]

@@ -1,0 +1,10 @@
+syn_id	category	filename	description
+syn26967454	data	ROSMAP_Residualized_counts_(diagnosis).tsv	ROSMAP residualized counts, diagnosis effect preserved
+syn27024966	data	Mayo_Residualized_counts_(diagnosis).tsv	Mayo residualized counts, diagnosis effect preserved
+syn29855598	metadata	ROSMAP_Covariates_ages_censored.tsv	ROSMAP sample covariates (ages 90+ censored)
+syn29855549	metadata	Mayo_Covariates_ages_censored.tsv	Mayo sample covariates (ages 90+ censored)
+syn26967460	metadata	ROSMAP_Configuration_file.yml	sageseqr model configuration used for ROSMAP
+syn27024973	metadata	Mayo_Configuration_file.yml	sageseqr model configuration used for Mayo
+syn26967452	metadata	ROSMAP_BioMart_query_results.tsv	Gene annotation (Ensembl ID to symbol)
+syn26967457	DE	ROSMAP_Differential_Expression_(diagnosis).tsv	ROSMAP DE results, AD vs control
+syn27024969	DE	Mayo_Differential_Expression_(diagnosis).tsv	Mayo DE results, AD vs control

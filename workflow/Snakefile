@@ -1,0 +1,209 @@
+import pandas as pd
+
+
+configfile: "config/config.yaml"
+
+
+# Synapse token is read from this environment variable (never written in the repo)
+envvars:
+    "SYNAPSE_AUTH_TOKEN",
+
+
+# Files to download. Columns: syn_id, category, filename, description
+FILES = pd.read_csv(config["synapse_files"], sep="\t")
+
+# One expression matrix per study, region and diagnosis
+EXPRESSION = [
+    f"results/expression/{study}/{region}_{dx}.tsv"
+    for study, regions in config["regions"].items()
+    for region in regions
+    for dx in config["diagnoses"]
+]
+
+# Study of each region, e.g. STUDY_OF["DLPFC"] == "ROSMAP"
+STUDY_OF = {
+    region: study for study, regions in config["regions"].items() for region in regions
+}
+
+# Subsample tables of every design (see docs/experimental_design.md)
+SUB = config["subsampling"]
+SUBSAMPLES = (
+    [f"results/subsamples/matched/{STUDY_OF[r]}/{r}.tsv" for r in STUDY_OF]
+    + [
+        f"results/subsamples/equal_n/{name}/{STUDY_OF[r]}/{r}.tsv"
+        for name, design in SUB["equal_n"].items()
+        for r in design["regions"]
+    ]
+    + [
+        f"results/subsamples/curve/{STUDY_OF[g['region']]}/{g['region']}_{g['dx']}_n{n}.tsv"
+        for g in SUB["curve"]
+        for n in g["n"]
+    ]
+    + [f"results/subsamples/paired/{STUDY_OF[a]}/{a}-{b}.tsv" for a, b in SUB["paired"]]
+)
+
+
+rule all:
+    default_target: True
+    input:
+        expand(
+            "resources/{category}/{filename}",
+            zip,
+            category=FILES["category"],
+            filename=FILES["filename"],
+        ),
+        EXPRESSION,
+        "results/demographics/demographics.pdf",
+        SUBSAMPLES,
+
+
+rule download_synapse:
+    output:
+        protected("resources/{category}/{filename}"),
+    log:
+        "logs/download_synapse/{category}/{filename}.log",
+    conda:
+        "envs/synapse.yaml"
+    params:
+        syn_id=lookup(
+            query="category == '{category}' & filename == '{filename}'",
+            within=FILES,
+            cols="syn_id",
+        ),
+    shell:
+        "synapse get {params.syn_id} --downloadLocation resources/{wildcards.category} > {log:q} 2>&1"
+
+
+# Samples of one region and diagnosis, one per donor (highest RIN)
+rule select_samples:
+    input:
+        metadata="resources/metadata/{study}_Covariates_ages_censored.tsv",
+    output:
+        "results/samples/{study}/{region}_{dx}.tsv",
+    log:
+        "logs/select_samples/{study}/{region}_{dx}.log",
+    conda:
+        "envs/data_wr.yaml"
+    script:
+        "scripts/select_samples.R"
+
+
+# Expression matrix of one region and diagnosis (genes x samples)
+rule split_expression:
+    input:
+        counts="resources/data/{study}_Residualized_counts_(diagnosis).tsv",
+        samples="results/samples/{study}/{region}_{dx}.tsv",
+    output:
+        "results/expression/{study}/{region}_{dx}.tsv",
+    log:
+        "logs/split_expression/{study}/{region}_{dx}.log",
+    conda:
+        "envs/data_wr.yaml"
+    script:
+        "scripts/split_expression.R"
+
+
+# Demographics per region x diagnosis (figure + table)
+rule plot_demographics:
+    input:
+        metadata=expand(
+            "resources/metadata/{study}_Covariates_ages_censored.tsv",
+            study=config["regions"],
+        ),
+        theme="workflow/scripts/R/theme_pub.R",
+    output:
+        pdf="results/demographics/demographics.pdf",
+        jpeg="results/demographics/demographics.jpeg",
+        table="results/demographics/demographics_table.tsv",
+    log:
+        "logs/plot_demographics.log",
+    conda:
+        "envs/plots_r.yaml"
+    params:
+        regions=config["regions"],
+        diagnoses=config["diagnoses"],
+    script:
+        "scripts/plot_demographics.R"
+
+
+# ---- Subsampling (docs/experimental_design.md) ------------------------------
+
+
+# 1. Main: CT complete, AD subsampled to the n of CT with the sex ratio of CT
+rule subsample_matched:
+    input:
+        ad="results/samples/{study}/{region}_AD.tsv",
+        ct="results/samples/{study}/{region}_CT.tsv",
+        utils="workflow/scripts/R/subsample_utils.R",
+    output:
+        "results/subsamples/matched/{study}/{region}.tsv",
+    log:
+        "logs/subsample_matched/{study}/{region}.log",
+    conda:
+        "envs/data_wr.yaml"
+    params:
+        replicates=SUB["replicates"],
+        seed=SUB["seed"],
+    script:
+        "scripts/subsample_matched.R"
+
+
+# 2. Robustness: AD and CT both subsampled to the same n
+rule subsample_equal_n:
+    input:
+        ad="results/samples/{study}/{region}_AD.tsv",
+        ct="results/samples/{study}/{region}_CT.tsv",
+        utils="workflow/scripts/R/subsample_utils.R",
+    output:
+        "results/subsamples/equal_n/{set}/{study}/{region}.tsv",
+    log:
+        "logs/subsample_equal_n/{set}/{study}/{region}.log",
+    conda:
+        "envs/data_wr.yaml"
+    params:
+        n=lookup(dpath="subsampling/equal_n/{set}/n", within=config),
+        replicates=SUB["replicates"],
+        seed=SUB["seed"],
+    script:
+        "scripts/subsample_equal_n.R"
+
+
+# 3. Reproducibility curve: two disjoint subsamples of size n from one group
+rule subsample_curve:
+    input:
+        samples="results/samples/{study}/{region}_{dx}.tsv",
+        utils="workflow/scripts/R/subsample_utils.R",
+    output:
+        "results/subsamples/curve/{study}/{region}_{dx}_n{n}.tsv",
+    log:
+        "logs/subsample_curve/{study}/{region}_{dx}_n{n}.log",
+    wildcard_constraints:
+        n=r"\d+",
+    conda:
+        "envs/data_wr.yaml"
+    params:
+        replicates=SUB["replicates"],
+        seed=SUB["seed"],
+    script:
+        "scripts/subsample_curve.R"
+
+
+# 4. Paired: only donors with both regions, same donors in both networks
+rule subsample_paired:
+    input:
+        a_ad="results/samples/{study}/{region_a}_AD.tsv",
+        a_ct="results/samples/{study}/{region_a}_CT.tsv",
+        b_ad="results/samples/{study}/{region_b}_AD.tsv",
+        b_ct="results/samples/{study}/{region_b}_CT.tsv",
+        utils="workflow/scripts/R/subsample_utils.R",
+    output:
+        "results/subsamples/paired/{study}/{region_a}-{region_b}.tsv",
+    log:
+        "logs/subsample_paired/{study}/{region_a}-{region_b}.log",
+    conda:
+        "envs/data_wr.yaml"
+    params:
+        replicates=SUB["replicates"],
+        seed=SUB["seed"],
+    script:
+        "scripts/subsample_paired.R"
