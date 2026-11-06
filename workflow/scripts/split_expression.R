@@ -4,18 +4,23 @@
 # Output: same format, only the samples listed in the selected-samples table
 # (one sample per donor, see select_samples.R).
 
-library(data.table)
+library(dplyr)
+library(vroom)
 
 log_file <- file(snakemake@log[[1]], open = "wt")
 sink(log_file, type = "output")
 sink(log_file, type = "message")
 
-samples <- fread(snakemake@input[["samples"]])$specimenID
+samples <- vroom(snakemake@input[["samples"]]) |>
+  pull(specimenID)
 
 # Read only the gene column and the selected samples
-counts <- fread(snakemake@input[["counts"]], select = c("feature", samples))
+counts <- vroom(
+  snakemake@input[["counts"]],
+  col_select = c(feature, all_of(samples))
+)
 
-fwrite(counts, snakemake@output[[1]], sep = "\t")
+vroom_write(counts, snakemake@output[[1]])
 
 message("region=", snakemake@wildcards[["region"]], " diagnosis=", snakemake@wildcards[["dx"]])
 message("samples=", length(samples), " genes=", nrow(counts))

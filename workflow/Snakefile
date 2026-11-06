@@ -12,35 +12,58 @@ envvars:
 # Files to download. Columns: syn_id, category, filename, description
 FILES = pd.read_csv(config["synapse_files"], sep="\t")
 
-# One expression matrix per study, region and diagnosis
-EXPRESSION = [
-    f"results/expression/{study}/{region}_{dx}.tsv"
-    for study, regions in config["regions"].items()
-    for region in regions
-    for dx in config["diagnoses"]
-]
-
-# Study of each region, e.g. STUDY_OF["DLPFC"] == "ROSMAP"
-STUDY_OF = {
-    region: study for study, regions in config["regions"].items() for region in regions
-}
-
-# Subsample tables of every design (see docs/experimental_design.md)
+STUDY_OF = config["regions"]  # region -> study, e.g. STUDY_OF["DLPFC"] == "ROSMAP"
+REGIONS = list(STUDY_OF)  # DLPFC, ACC, PCC, TCX, CBE
+STUDIES = sorted(set(STUDY_OF.values()))  # Mayo, ROSMAP
 SUB = config["subsampling"]
-SUBSAMPLES = (
-    [f"results/subsamples/matched/{STUDY_OF[r]}/{r}.tsv" for r in STUDY_OF]
-    + [
-        f"results/subsamples/equal_n/{name}/{STUDY_OF[r]}/{r}.tsv"
-        for name, design in SUB["equal_n"].items()
-        for r in design["regions"]
-    ]
-    + [
-        f"results/subsamples/curve/{STUDY_OF[g['region']]}/{g['region']}_{g['dx']}_n{n}.tsv"
-        for g in SUB["curve"]
-        for n in g["n"]
-    ]
-    + [f"results/subsamples/paired/{STUDY_OF[a]}/{a}-{b}.tsv" for a, b in SUB["paired"]]
+
+
+def reps(design):
+    """rep01, rep02, ... for one design"""
+    return [f"rep{r:02d}" for r in range(1, SUB["replicates"][design] + 1)]
+
+
+# ---- Networks to infer (final results) ---------------------------------------
+# One folder per network: results/aracne/{design}/{table}/{network}/network.txt
+#   {table}   = subsample table of results/subsamples/{design}/, e.g. DLPFC
+#   {network} = value of its 'network' column, e.g. AD_rep01
+
+# 1. AD vs CT with the same n: per region, CT_all + AD_rep01..10
+NETWORKS_MATCHED = expand(
+    "results/aracne/matched/{region}/{network}/network.txt",
+    region=REGIONS,
+    network=["CT_all"] + [f"AD_{r}" for r in reps("matched")],
 )
+
+# 2. Same n in the ROSMAP regions: AD_rep01..10 and CT_rep01..10
+NETWORKS_EQUAL_N = expand(
+    "results/aracne/equal_n/{region}/{dx}_{rep}/network.txt",
+    region=SUB["equal_n"]["regions"],
+    dx=["AD", "CT"],
+    rep=reps("equal_n"),
+)
+
+# 3. Reference J: two disjoint halves (A, B) per replicate, for each group and n
+NETWORKS_CURVE = []
+for g in SUB["curve"]:
+    NETWORKS_CURVE += expand(
+        "results/aracne/curve/{group}_n{n}/{rep}_{half}/network.txt",
+        group=f"{g['region']}_{g['dx']}",
+        n=g["n"],
+        rep=reps("curve"),
+        half=["A", "B"],
+    )
+
+
+wildcard_constraints:
+    region="|".join(REGIONS),
+    region_a="|".join(REGIONS),
+    region_b="|".join(REGIONS),
+    dx="|".join(config["diagnoses"]),
+    design="matched|equal_n|curve|paired",
+    table=r"[^/]+",
+    network=r"[^/]+",
+    seed=r"\d+",
 
 
 rule all:
@@ -52,9 +75,37 @@ rule all:
             category=FILES["category"],
             filename=FILES["filename"],
         ),
-        EXPRESSION,
         "results/demographics/demographics.pdf",
-        SUBSAMPLES,
+        NETWORKS_MATCHED,
+        NETWORKS_CURVE,
+        NETWORKS_EQUAL_N,
+
+
+# Run one design at a time, e.g.: snakemake networks_matched --sdm conda --cores 4
+rule networks_matched:
+    input:
+        NETWORKS_MATCHED,
+
+
+rule networks_curve:
+    input:
+        NETWORKS_CURVE,
+
+
+rule networks_equal_n:
+    input:
+        NETWORKS_EQUAL_N,
+
+
+# Files of the study a region comes from
+def covariates(wildcards):
+    return (
+        f"resources/metadata/{STUDY_OF[wildcards.region]}_Covariates_ages_censored.tsv"
+    )
+
+
+def residualized_counts(wildcards):
+    return f"resources/data/{STUDY_OF[wildcards.region]}_Residualized_counts_(diagnosis).tsv"
 
 
 rule download_synapse:
@@ -77,26 +128,26 @@ rule download_synapse:
 # Samples of one region and diagnosis, one per donor (highest RIN)
 rule select_samples:
     input:
-        metadata="resources/metadata/{study}_Covariates_ages_censored.tsv",
+        metadata=covariates,
     output:
-        "results/samples/{study}/{region}_{dx}.tsv",
+        "results/samples/{region}_{dx}.tsv",
     log:
-        "logs/select_samples/{study}/{region}_{dx}.log",
+        "logs/select_samples/{region}_{dx}.log",
     conda:
         "envs/data_wr.yaml"
     script:
         "scripts/select_samples.R"
 
 
-# Expression matrix of one region and diagnosis (genes x samples)
+# Expression matrix of one region and diagnosis (genes x all its donors)
 rule split_expression:
     input:
-        counts="resources/data/{study}_Residualized_counts_(diagnosis).tsv",
-        samples="results/samples/{study}/{region}_{dx}.tsv",
+        counts=residualized_counts,
+        samples="results/samples/{region}_{dx}.tsv",
     output:
-        "results/expression/{study}/{region}_{dx}.tsv",
+        "results/expression/{region}_{dx}.tsv",
     log:
-        "logs/split_expression/{study}/{region}_{dx}.log",
+        "logs/split_expression/{region}_{dx}.log",
     conda:
         "envs/data_wr.yaml"
     script:
@@ -108,7 +159,7 @@ rule plot_demographics:
     input:
         metadata=expand(
             "resources/metadata/{study}_Covariates_ages_censored.tsv",
-            study=config["regions"],
+            study=STUDIES,
         ),
         theme="workflow/scripts/R/theme_pub.R",
     output:
@@ -120,7 +171,7 @@ rule plot_demographics:
     conda:
         "envs/plots_r.yaml"
     params:
-        regions=config["regions"],
+        regions=REGIONS,
         diagnoses=config["diagnoses"],
     script:
         "scripts/plot_demographics.R"
@@ -132,17 +183,17 @@ rule plot_demographics:
 # 1. Main: CT complete, AD subsampled to the n of CT with the sex ratio of CT
 rule subsample_matched:
     input:
-        ad="results/samples/{study}/{region}_AD.tsv",
-        ct="results/samples/{study}/{region}_CT.tsv",
+        ad="results/samples/{region}_AD.tsv",
+        ct="results/samples/{region}_CT.tsv",
         utils="workflow/scripts/R/subsample_utils.R",
     output:
-        "results/subsamples/matched/{study}/{region}.tsv",
+        "results/subsamples/matched/{region}.tsv",
     log:
-        "logs/subsample_matched/{study}/{region}.log",
+        "logs/subsample_matched/{region}.log",
     conda:
         "envs/data_wr.yaml"
     params:
-        replicates=SUB["replicates"],
+        replicates=SUB["replicates"]["matched"],
         seed=SUB["seed"],
     script:
         "scripts/subsample_matched.R"
@@ -151,59 +202,207 @@ rule subsample_matched:
 # 2. Robustness: AD and CT both subsampled to the same n
 rule subsample_equal_n:
     input:
-        ad="results/samples/{study}/{region}_AD.tsv",
-        ct="results/samples/{study}/{region}_CT.tsv",
+        ad="results/samples/{region}_AD.tsv",
+        ct="results/samples/{region}_CT.tsv",
         utils="workflow/scripts/R/subsample_utils.R",
     output:
-        "results/subsamples/equal_n/{set}/{study}/{region}.tsv",
+        "results/subsamples/equal_n/{region}.tsv",
     log:
-        "logs/subsample_equal_n/{set}/{study}/{region}.log",
+        "logs/subsample_equal_n/{region}.log",
     conda:
         "envs/data_wr.yaml"
     params:
-        n=lookup(dpath="subsampling/equal_n/{set}/n", within=config),
-        replicates=SUB["replicates"],
+        n=SUB["equal_n"]["n"],
+        replicates=SUB["replicates"]["equal_n"],
         seed=SUB["seed"],
     script:
         "scripts/subsample_equal_n.R"
 
 
-# 3. Reproducibility curve: two disjoint subsamples of size n from one group
+# 3. Reference J: two disjoint subsamples of size n from one group
 rule subsample_curve:
     input:
-        samples="results/samples/{study}/{region}_{dx}.tsv",
+        samples="results/samples/{region}_{dx}.tsv",
         utils="workflow/scripts/R/subsample_utils.R",
     output:
-        "results/subsamples/curve/{study}/{region}_{dx}_n{n}.tsv",
+        "results/subsamples/curve/{region}_{dx}_n{n}.tsv",
     log:
-        "logs/subsample_curve/{study}/{region}_{dx}_n{n}.log",
+        "logs/subsample_curve/{region}_{dx}_n{n}.log",
     wildcard_constraints:
         n=r"\d+",
     conda:
         "envs/data_wr.yaml"
     params:
-        replicates=SUB["replicates"],
+        replicates=SUB["replicates"]["curve"],
         seed=SUB["seed"],
     script:
         "scripts/subsample_curve.R"
 
 
-# 4. Paired: only donors with both regions, same donors in both networks
+# 4. Paired (postponed): only donors with both regions, same donors in both networks
 rule subsample_paired:
     input:
-        a_ad="results/samples/{study}/{region_a}_AD.tsv",
-        a_ct="results/samples/{study}/{region_a}_CT.tsv",
-        b_ad="results/samples/{study}/{region_b}_AD.tsv",
-        b_ct="results/samples/{study}/{region_b}_CT.tsv",
+        a_ad="results/samples/{region_a}_AD.tsv",
+        a_ct="results/samples/{region_a}_CT.tsv",
+        b_ad="results/samples/{region_b}_AD.tsv",
+        b_ct="results/samples/{region_b}_CT.tsv",
         utils="workflow/scripts/R/subsample_utils.R",
     output:
-        "results/subsamples/paired/{study}/{region_a}-{region_b}.tsv",
+        "results/subsamples/paired/{region_a}-{region_b}.tsv",
     log:
-        "logs/subsample_paired/{study}/{region_a}-{region_b}.log",
+        "logs/subsample_paired/{region_a}-{region_b}.log",
     conda:
         "envs/data_wr.yaml"
     params:
-        replicates=SUB["replicates"],
+        replicates=SUB["replicates"]["paired"],
         seed=SUB["seed"],
     script:
         "scripts/subsample_paired.R"
+
+
+# ---- Networks with ARACNe-AP ------------------------------------------------
+
+
+# Download ARACNe-AP at a fixed commit and build the jar (JDK + ant)
+rule install_aracne:
+    output:
+        config["aracne"]["jar"],
+    log:
+        "logs/install_aracne.log",
+    conda:
+        "envs/aracne.yaml"
+    params:
+        commit=config["aracne"]["commit"],
+        src="resources/aracne/ARACNe-AP",
+    shell:
+        """
+        rm -rf {params.src} && mkdir -p {params.src}
+        curl -sL https://github.com/califano-lab/ARACNe-AP/archive/{params.commit}.tar.gz \
+            | tar -xz --strip-components=1 -C {params.src}
+        (cd {params.src} && ant main) >{log} 2>&1
+        cp {params.src}/dist/aracne.jar {output}
+        """
+
+
+# Expression matrix of the region x diagnosis group of one network:
+#   matched/{region} or equal_n/{region} + network AD_rep01 / CT_all -> {region}_AD / {region}_CT
+#   curve/{region}_{dx}_n{n}             + network rep01_A           -> {region}_{dx}
+def group_expression(wildcards):
+    if wildcards.design == "curve":
+        group = wildcards.table.rsplit("_n", 1)[0]  # "PCC_AD_n75" -> "PCC_AD"
+    else:
+        dx = wildcards.network.split("_")[0]  # "AD_rep01" -> "AD"
+        group = f"{wildcards.table}_{dx}"
+    return f"results/expression/{group}.tsv"
+
+
+# Expression matrix of one network (genes x its samples) and its regulators (all genes)
+rule aracne_matrix:
+    input:
+        expression=group_expression,
+        subsamples="results/subsamples/{design}/{table}.tsv",
+    output:
+        matrix=temp("results/aracne/{design}/{table}/{network}/matrix.tsv"),
+        regulators="results/aracne/{design}/{table}/{network}/regulators.txt",
+    log:
+        "logs/aracne/{design}/{table}/{network}/matrix.log",
+    conda:
+        "envs/data_wr.yaml"
+    script:
+        "scripts/aracne_matrix.R"
+
+
+# ARACNe-AP. Step 1: MI threshold. Output: folder with miThreshold_p<pvalue>_samples<N>.txt
+rule aracne_threshold:
+    input:
+        matrix="results/aracne/{design}/{table}/{network}/matrix.tsv",
+        regulators="results/aracne/{design}/{table}/{network}/regulators.txt",
+        jar=config["aracne"]["jar"],
+    output:
+        directory("results/aracne/{design}/{table}/{network}/threshold"),
+    log:
+        "logs/aracne/{design}/{table}/{network}/threshold.log",
+    conda:
+        "envs/aracne.yaml"
+    resources:
+        mem_gb=config["aracne"]["memory"]["threshold_gb"],
+    params:
+        pvalue=config["aracne"]["pvalue"],
+    shell:
+        """
+        mkdir -p {output}
+        java -Xmx{resources.mem_gb}G -jar {input.jar} \
+            -e {input.matrix} -o {output} --tfs {input.regulators} \
+            --pvalue {params.pvalue} --seed 1 --calculateThreshold \
+            &>{log}
+        """
+
+
+# ARACNe-AP. Step 2: one bootstrap per seed
+rule aracne_bootstrap:
+    input:
+        matrix="results/aracne/{design}/{table}/{network}/matrix.tsv",
+        regulators="results/aracne/{design}/{table}/{network}/regulators.txt",
+        threshold="results/aracne/{design}/{table}/{network}/threshold",
+        jar=config["aracne"]["jar"],
+    output:
+        # ARACNe's working folder for this seed. After the mv it only holds a copy of
+        # the threshold file, so temp() lets Snakemake delete it when the job ends
+        work=temp(
+            directory(
+                "results/aracne/{design}/{table}/{network}/bootstraps/seed{seed}"
+            )
+        ),
+        # ARACNe names its output with a random ID; we rename it with the seed so the
+        # name is known in advance and the consolidate step can request it by expand
+        network="results/aracne/{design}/{table}/{network}/bootstrap_networks/bootstrapNetwork_seed{seed}.txt",
+    log:
+        "logs/aracne/{design}/{table}/{network}/bootstrap_seed{seed}.log",
+    conda:
+        "envs/aracne.yaml"
+    threads: config["aracne"]["bootstrap"]["threads"]
+    resources:
+        mem_gb=config["aracne"]["memory"]["bootstrap_gb"],
+    params:
+        pvalue=config["aracne"]["pvalue"],
+    shell:
+        """
+        mkdir -p {output.work}
+        # ARACNe looks for the threshold file inside -o, so it must be copied there
+        cp {input.threshold}/miThreshold_*.txt {output.work}/
+        # Java heap 2 GB below the job's memory: the JVM uses memory outside the heap
+        java -Xmx$(({resources.mem_gb} - 2))G -jar {input.jar} \
+            -e {input.matrix} -o {output.work} --tfs {input.regulators} \
+            --pvalue {params.pvalue} --threads {threads} --seed {wildcards.seed} \
+            &>{log}
+        # Each run writes exactly one bootstrapNetwork_*.txt; give it its fixed name
+        mv {output.work}/bootstrapNetwork_*.txt {output.network}
+        """
+
+
+# ARACNe-AP. Step 3: consolidate the bootstraps (edges kept at p < 0.05)
+rule aracne_consolidate:
+    input:
+        # One file per seed, already together in bootstrap_networks/
+        bootstraps=expand(
+            "results/aracne/{{design}}/{{table}}/{{network}}/bootstrap_networks/bootstrapNetwork_seed{seed}.txt",
+            seed=range(1, config["aracne"]["bootstrap"]["n_boot"] + 1),
+        ),
+        jar=config["aracne"]["jar"],
+    output:
+        # ARACNe writes network.txt inside the folder it consolidates
+        consolidated="results/aracne/{design}/{table}/{network}/bootstrap_networks/network.txt",
+        # Final copy at the path rule all asks for
+        network="results/aracne/{design}/{table}/{network}/network.txt",
+    log:
+        "logs/aracne/{design}/{table}/{network}/consolidate.log",
+    conda:
+        "envs/aracne.yaml"
+    resources:
+        mem_gb=config["aracne"]["memory"]["consolidate_gb"],
+    shell:
+        """
+        java -Xmx$(({resources.mem_gb} - 2))G -jar {input.jar} \
+            -o $(dirname {output.consolidated}) --consolidate &>{log}
+        cp {output.consolidated} {output.network}
+        """

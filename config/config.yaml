@@ -2,26 +2,34 @@
 # Columns: syn_id, category (data | metadata | DE), filename, description
 synapse_files: config/synapse_files.tsv
 
-# Brain regions per study (values of the 'tissue' column in the covariates file)
+# Brain region -> study it comes from
+# (region = value of the 'tissue' column in the covariates file)
 regions:
-  ROSMAP: [DLPFC, ACC, PCC]
-  Mayo: [TCX, CBE]
+  DLPFC: ROSMAP
+  ACC: ROSMAP
+  PCC: ROSMAP
+  TCX: Mayo
+  CBE: Mayo
 
 # Diagnosis groups to keep (values of the 'diagnosis' column)
 diagnoses: [AD, CT]
 
 # Subsampling designs (see docs/experimental_design.md)
 subsampling:
-  # Each network is already stabilized by ARACNe-AP (bootstraps + consolidation),
-  # so 10 replicates are enough to capture which donors were drawn
-  replicates: 10
+  # Replicates (random draws) per design. Each network is already stabilized by
+  # ARACNe-AP (bootstraps + consolidation), so few replicates are enough to
+  # capture which donors were drawn. The curve only needs the mean J per n.
+  replicates:
+    matched: 10
+    equal_n: 10
+    curve: 5
+    paired: 10
   seed: 2026
 
   # 2. Same n in every network, to test if the region ranking depends on n
   equal_n:
-    rosmap_n90:
-      n: 90
-      regions: [DLPFC, ACC, PCC]
+    n: 90
+    regions: [DLPFC, ACC, PCC]
 
   # 3. Reproducibility curve: two disjoint subsamples of size n from one group
   curve:
@@ -31,6 +39,21 @@ subsampling:
     - {region: PCC, dx: AD, n: [75]} # validation
 
   # 4. Paired design: only donors sampled in both regions
+  # (ARACNe rules do not support paired tables yet)
   # Postponed: run only if results call for it. To enable, use:
   #   paired: [[DLPFC, PCC], [DLPFC, ACC]]
   paired: []
+
+# ARACNe-AP (https://github.com/califano-lab/ARACNe-AP)
+# Rule install_aracne downloads this commit and builds the jar with `ant main`
+aracne:
+  commit: 30967ea10494fcb42c2bfd00604c94907da5397b # last commit (2018-04-12)
+  jar: resources/aracne/aracne.jar
+  pvalue: "1E-8" # p-value of the MI threshold (step 1 and bootstraps)
+  bootstrap:
+    n_boot: 100 # bootstraps per network
+    threads: 4 # threads of each bootstrap job
+  memory: # GB per job
+    threshold_gb: 8
+    bootstrap_gb: 16
+    consolidate_gb: 8

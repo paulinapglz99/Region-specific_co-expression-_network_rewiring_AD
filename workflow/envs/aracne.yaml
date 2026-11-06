@@ -1,0 +1,6 @@
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - openjdk=17.0.18 # runs ARACNe-AP (needs JDK > 1.8)
+  - ant=1.10.15 # builds the ARACNe-AP jar (rule install_aracne)

@@ -9,25 +9,24 @@ log_file <- file(snakemake@log[[1]], open = "wt")
 sink(log_file, type = "output")
 sink(log_file, type = "message")
 
-ad <- fread(snakemake@input[["ad"]])
-ct <- fread(snakemake@input[["ct"]])
-replicates <- snakemake@params[["replicates"]]
+ad <- read_samples(snakemake@input[["ad"]])
+ct <- read_samples(snakemake@input[["ct"]])
+reps <- rep_label(seq_len(snakemake@params[["replicates"]]))
 
 set_seed_for(snakemake@params[["seed"]], paste("matched", snakemake@wildcards[["region"]]))
 female_prop <- mean(ct$sex == "female")
 
-networks <- list(CT_all = ct)
-for (r in seq_len(replicates)) {
-  networks[[paste0("AD_", rep_label(r))]] <- sample_by_sex(ad, nrow(ct), female_prop)
-}
+# One AD subsample per replicate
+ad_networks <- reps |>
+  map(\(rep) sample_by_sex(ad, nrow(ct), female_prop)) |>
+  set_names(paste0("AD_", reps))
 
-subsamples <- rbindlist(networks, idcol = "network")
-subsamples[, diagnosis := sub("_.*", "", network)]
-fwrite(
-  subsamples[, .(network, diagnosis, specimenID, individualID, sex, RIN)],
-  snakemake@output[[1]],
-  sep = "\t"
-)
+subsamples <- c(list(CT_all = ct), ad_networks) |>
+  bind_rows(.id = "network") |>
+  mutate(diagnosis = sub("_.*", "", network)) |>
+  select(network, diagnosis, specimenID, individualID, sex, RIN)
+
+vroom_write(subsamples, snakemake@output[[1]])
 
 message("CT n=", nrow(ct), " (", round(100 * female_prop, 1), "% female) | AD pool=", nrow(ad))
-print(summarise_networks(subsamples))
+print(summarise_networks(subsamples), n = Inf)

@@ -9,5 +9,6 @@ dependencies:
   - python=3.12
   - snakemake=9.27.1
   - snakefmt=2.1.0
+  - go-shfmt=3.14.1 # snakefmt uses it to format shell blocks
   - snakedeploy=0.18.1
   - pandas=2.3.3

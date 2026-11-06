@@ -5,6 +5,7 @@
 #   source(snakemake@input[["theme"]])
 # (the theme is an input of each plot rule, so editing it re-makes the plots)
 
+library(dplyr)
 library(ggplot2)
 
 
@@ -121,13 +122,15 @@ facet_regions <- function() {
 
 # ---- Factor order ------------------------------------------------------------
 
-# Apply the order above to the usual columns (data.table, changed in place)
-set_pub_levels <- function(dt) {
-  if ("study" %in% names(dt)) dt[, study := factor(study, levels = STUDY_ORDER)]
-  if ("region" %in% names(dt)) dt[, region := factor(region, levels = REGION_ORDER)]
-  if ("diagnosis" %in% names(dt)) dt[, diagnosis := factor(diagnosis, levels = DX_ORDER)]
-  if ("sex" %in% names(dt)) dt[, sex := factor(sex, levels = SEX_ORDER)]
-  invisible(dt)
+# Apply the order above to the usual columns (only those present in the table)
+set_pub_levels <- function(df) {
+  df |>
+    mutate(
+      across(any_of("study"), \(x) factor(x, levels = STUDY_ORDER)),
+      across(any_of("region"), \(x) factor(x, levels = REGION_ORDER)),
+      across(any_of("diagnosis"), \(x) factor(x, levels = DX_ORDER)),
+      across(any_of("sex"), \(x) factor(x, levels = SEX_ORDER))
+    )
 }
 
 

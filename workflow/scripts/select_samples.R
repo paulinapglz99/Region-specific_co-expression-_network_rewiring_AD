@@ -3,7 +3,8 @@
 # Some donors were sequenced twice in the same region (different batches).
 # We keep the sample with the highest RIN (ties: first specimenID alphabetically).
 
-library(data.table)
+library(dplyr)
+library(vroom)
 
 log_file <- file(snakemake@log[[1]], open = "wt")
 sink(log_file, type = "output")
@@ -12,26 +13,27 @@ sink(log_file, type = "message")
 region <- snakemake@wildcards[["region"]]
 dx <- snakemake@wildcards[["dx"]]
 
-meta <- fread(
+# IDs as text: Mayo donor IDs look like numbers
+meta <- vroom(
   snakemake@input[["metadata"]],
-  colClasses = c(age_death = "character", apoe4_allele = "character")
+  col_types = cols(specimenID = "c", individualID = "c", age_death = "c", apoe4_allele = "c")
 )
-group <- meta[tissue == region & diagnosis == dx]
+
+group <- meta |>
+  filter(tissue == region, diagnosis == dx)
 
 if (nrow(group) == 0) {
   stop("No samples found for tissue=", region, ", diagnosis=", dx)
 }
 
-setorder(group, individualID, -RIN, specimenID)
-selected <- group[!duplicated(individualID)]
+selected <- group |>
+  arrange(individualID, desc(RIN), specimenID) |>
+  distinct(individualID, .keep_all = TRUE) |>
+  select(specimenID, individualID, sex, age_death, apoe4_allele, RIN, pmi)
 
-fwrite(
-  selected[, .(specimenID, individualID, sex, age_death, apoe4_allele, RIN, pmi)],
-  snakemake@output[[1]],
-  sep = "\t"
-)
+vroom_write(selected, snakemake@output[[1]])
 
 message("region=", region, " diagnosis=", dx)
 message("samples=", nrow(group), " donors=", nrow(selected))
-dropped <- group[!specimenID %in% selected$specimenID, specimenID]
+dropped <- setdiff(group$specimenID, selected$specimenID)
 if (length(dropped) > 0) message("dropped duplicates: ", paste(dropped, collapse = ", "))

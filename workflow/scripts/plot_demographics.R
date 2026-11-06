@@ -5,7 +5,10 @@
 # Table: summary per group + AD vs CT tests within each region.
 
 source(snakemake@input[["theme"]])
-library(data.table)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(vroom)
 library(patchwork)
 
 log_file <- file(snakemake@log[[1]], open = "wt")
@@ -18,27 +21,35 @@ diagnoses <- unlist(snakemake@params[["diagnoses"]])
 
 # ---- Read covariates of all studies -----------------------------------------
 
-read_covariates <- function(f) {
-  dt <- fread(f, colClasses = c(age_death = "character", apoe4_allele = "character"))
-  dt[, study := sub("_Covariates_ages_censored.tsv$", "", basename(f))]
-  dt[, .(study, specimenID, individualID, region = tissue, diagnosis,
-         sex, age_death, apoe4_allele, RIN, pmi)]
+read_covariates <- function(file) {
+  # IDs as text: Mayo donor IDs look like numbers
+  vroom(file, col_types = cols(
+    specimenID = "c", individualID = "c", age_death = "c", apoe4_allele = "c"
+  )) |>
+    mutate(study = sub("_Covariates_ages_censored.tsv$", "", basename(file))) |>
+    select(study, specimenID, individualID, region = tissue, diagnosis,
+           sex, age_death, apoe4_allele, RIN, pmi)
 }
 
-meta <- rbindlist(lapply(snakemake@input[["metadata"]], read_covariates))
-meta <- meta[region %in% regions & diagnosis %in% diagnoses]
-
-# Ages above 89 are censored as "90+" (counted as 90 for the median)
-meta[, age := as.numeric(fifelse(age_death == "90+", "90", age_death))]
-meta[, age_group := fcase(age < 80, "<80", age < 90, "80-89", default = "90+")]
-meta[, age_group := factor(age_group, levels = AGE_ORDER)]
-meta[, apoe4_allele := factor(apoe4_allele, levels = APOE_ORDER)]
-set_pub_levels(meta)
+meta <- snakemake@input[["metadata"]] |>
+  map(read_covariates) |>
+  bind_rows() |>
+  filter(region %in% regions, diagnosis %in% diagnoses) |>
+  mutate(
+    # Ages above 89 are censored as "90+" (counted as 90 for the median)
+    age = as.numeric(if_else(age_death == "90+", "90", age_death)),
+    age_group = case_when(age < 80 ~ "<80", age < 90 ~ "80-89", .default = "90+"),
+    age_group = factor(age_group, levels = AGE_ORDER),
+    apoe4_allele = factor(apoe4_allele, levels = APOE_ORDER)
+  ) |>
+  set_pub_levels()
 
 
 # ---- Panels -----------------------------------------------------------------
 
-counts <- meta[, .(n = uniqueN(individualID)), by = .(study, region, diagnosis)]
+counts <- meta |>
+  group_by(study, region, diagnosis) |>
+  summarise(n = n_distinct(individualID), .groups = "drop")
 
 p_n <- ggplot(counts, aes(diagnosis, n, fill = diagnosis)) +
   geom_col(width = 0.7) +
@@ -52,9 +63,13 @@ p_n <- ggplot(counts, aes(diagnosis, n, fill = diagnosis)) +
 
 # Stacked 100% bars of one categorical variable
 plot_proportion <- function(var, fill_scale, title) {
-  d <- meta[, .N, by = c("study", "region", "diagnosis", var)]
-  d[, prop := N / sum(N), by = .(study, region, diagnosis)]
-  ggplot(d, aes(diagnosis, prop, fill = .data[[var]])) +
+  props <- meta |>
+    count(study, region, diagnosis, .data[[var]]) |>
+    group_by(study, region, diagnosis) |>
+    mutate(prop = n / sum(n)) |>
+    ungroup()
+
+  ggplot(props, aes(diagnosis, prop, fill = .data[[var]])) +
     geom_col(width = 0.7, colour = "white", linewidth = 0.2) +
     facet_regions() +
     scale_x_dx() +
@@ -90,27 +105,35 @@ p_pmi <- plot_box("pmi", "Post-mortem interval (h)")
 # UpSet plot of the regions sampled per donor, one per study:
 # top = donors in each combination, bottom = which regions form the combination
 plot_upset <- function(s, title = NULL) {
-  donors <- meta[study == s, .(regions = list(sort(unique(region)))), by = individualID]
-  donors[, combo := sapply(regions, paste, collapse = " + ")]
-  combos <- donors[, .N, by = combo][order(-N)]
-  combos[, combo := factor(combo, levels = combo)]
+  study_meta <- meta |> filter(study == s)
 
-  study_regions <- REGION_ORDER[REGION_ORDER %in% meta[study == s, region]]
-  dots <- CJ(combo = combos$combo, region = study_regions, sorted = FALSE)
-  dots[, present := mapply(function(c, r) r %in% strsplit(as.character(c), " + ", fixed = TRUE)[[1]],
-                           combo, region)]
-  dots[, region := factor(region, levels = rev(study_regions))]
+  # Combination of regions of each donor, e.g. "DLPFC + PCC"
+  combos <- study_meta |>
+    distinct(individualID, region) |>
+    arrange(region) |>
+    group_by(individualID) |>
+    summarise(combo = paste(region, collapse = " + ")) |>
+    count(combo) |>
+    arrange(desc(n)) |>
+    mutate(combo = factor(combo, levels = combo))
 
-  bars <- ggplot(combos, aes(combo, N)) +
+  study_regions <- REGION_ORDER[REGION_ORDER %in% study_meta$region]
+  dots <- expand_grid(combo = combos$combo, region = study_regions) |>
+    mutate(
+      present = map2_lgl(as.character(combo), region, \(c, r) r %in% strsplit(c, " + ", fixed = TRUE)[[1]]),
+      region = factor(region, levels = rev(study_regions))
+    )
+
+  bars <- ggplot(combos, aes(combo, n)) +
     geom_col(width = 0.7, fill = COL_NEUTRAL) +
-    geom_text(aes(label = N), vjust = -0.4, size = PUB_LABEL_SIZE) +
+    geom_text(aes(label = n), vjust = -0.4, size = PUB_LABEL_SIZE) +
     scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
     labs(title = title, subtitle = s, x = NULL, y = "Donors (n)") +
     theme_pub() +
     theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
 
   matrix <- ggplot(dots, aes(combo, region)) +
-    geom_line(data = dots[present == TRUE], aes(group = combo), linewidth = 0.5) +
+    geom_line(data = filter(dots, present), aes(group = combo), linewidth = 0.5) +
     geom_point(aes(colour = present), size = 2.2) +
     scale_colour_manual(values = c(`TRUE` = INK, `FALSE` = "grey85"), guide = "none") +
     labs(x = NULL, y = NULL) +
@@ -139,32 +162,41 @@ save_pub(fig, snakemake@output[["pdf"]], width = "double", height = FIG_MAX_HEIG
 
 # ---- Table ------------------------------------------------------------------
 
-summary_tab <- meta[, .(
-  n_samples = .N,
-  n_individuals = uniqueN(individualID),
-  pct_female = round(100 * mean(sex == "female"), 1),
-  median_age = median(age),
-  pct_age_90plus = round(100 * mean(age_group == "90+"), 1),
-  pct_apoe4_carrier = round(100 * mean(apoe4_allele != "0"), 1),
-  median_RIN = median(RIN),
-  median_pmi = median(pmi)
-), by = .(study, region, diagnosis)]
+summary_tab <- meta |>
+  group_by(study, region, diagnosis) |>
+  summarise(
+    n_samples = n(),
+    n_individuals = n_distinct(individualID),
+    pct_female = round(100 * mean(sex == "female"), 1),
+    median_age = median(age),
+    pct_age_90plus = round(100 * mean(age_group == "90+"), 1),
+    pct_apoe4_carrier = round(100 * mean(apoe4_allele != "0"), 1),
+    median_RIN = median(RIN),
+    median_pmi = median(pmi),
+    .groups = "drop"
+  )
 
 # AD vs CT within each region
-tests <- meta[, .(
-  p_sex = fisher.test(table(diagnosis, sex))$p.value,
-  p_age_group = fisher.test(table(diagnosis, age_group))$p.value,
-  p_apoe4 = fisher.test(table(diagnosis, apoe4_allele))$p.value,
-  p_RIN = wilcox.test(RIN[diagnosis == "AD"], RIN[diagnosis == "CT"])$p.value,
-  p_pmi = wilcox.test(pmi[diagnosis == "AD"], pmi[diagnosis == "CT"])$p.value
-), by = .(study, region)]
-p_cols <- grep("^p_", names(tests), value = TRUE)
-tests[, (p_cols) := lapply(.SD, signif, 3), .SDcols = p_cols]
+tests <- meta |>
+  group_by(study, region) |>
+  summarise(
+    p_sex = fisher.test(table(diagnosis, sex))$p.value,
+    p_age_group = fisher.test(table(diagnosis, age_group))$p.value,
+    p_apoe4 = fisher.test(table(diagnosis, apoe4_allele))$p.value,
+    p_RIN = wilcox.test(RIN[diagnosis == "AD"], RIN[diagnosis == "CT"])$p.value,
+    p_pmi = wilcox.test(pmi[diagnosis == "AD"], pmi[diagnosis == "CT"])$p.value,
+    .groups = "drop"
+  ) |>
+  mutate(across(starts_with("p_"), \(p) signif(p, 3)))
 
-table_out <- merge(summary_tab, tests, by = c("study", "region"))
-setorder(table_out, study, region, diagnosis)
-fwrite(table_out, snakemake@output[["table"]], sep = "\t")
+table_out <- summary_tab |>
+  left_join(tests, by = c("study", "region")) |>
+  arrange(study, region, diagnosis)
 
-message("Groups: ", nrow(summary_tab), " | samples: ", nrow(meta),
-        " | individuals: ", uniqueN(meta$individualID))
-print(table_out)
+vroom_write(table_out, snakemake@output[["table"]])
+
+message(
+  "Groups: ", nrow(summary_tab), " | samples: ", nrow(meta),
+  " | individuals: ", n_distinct(meta$individualID)
+)
+print(table_out, n = Inf, width = Inf)

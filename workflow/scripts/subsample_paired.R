@@ -13,44 +13,48 @@ sink(log_file, type = "message")
 
 region_a <- snakemake@wildcards[["region_a"]]
 region_b <- snakemake@wildcards[["region_b"]]
-samples <- list(
-  a_ad = fread(snakemake@input[["a_ad"]]), a_ct = fread(snakemake@input[["a_ct"]]),
-  b_ad = fread(snakemake@input[["b_ad"]]), b_ct = fread(snakemake@input[["b_ct"]])
-)
-replicates <- snakemake@params[["replicates"]]
+a_ad <- read_samples(snakemake@input[["a_ad"]])
+a_ct <- read_samples(snakemake@input[["a_ct"]])
+b_ad <- read_samples(snakemake@input[["b_ad"]])
+b_ct <- read_samples(snakemake@input[["b_ct"]])
+reps <- rep_label(seq_len(snakemake@params[["replicates"]]))
 
-# Donors present in both regions (one row per donor, from region A)
-shared_ct <- samples$a_ct[individualID %in% samples$b_ct$individualID]
-shared_ad <- samples$a_ad[individualID %in% samples$b_ad$individualID]
+# Donors present in both regions (one row per donor, taken from region A)
+shared_ct <- a_ct |> filter(individualID %in% b_ct$individualID)
+shared_ad <- a_ad |> filter(individualID %in% b_ad$individualID)
 
 set_seed_for(snakemake@params[["seed"]], paste("paired", region_a, region_b))
 female_prop <- mean(shared_ct$sex == "female")
 
-donors <- list(CT_all = shared_ct$individualID)
-for (r in seq_len(replicates)) {
-  picked <- sample_by_sex(shared_ad, nrow(shared_ct), female_prop)
-  donors[[paste0("AD_", rep_label(r))]] <- picked$individualID
-}
+# Donor IDs of every network: all shared CT + one AD draw per replicate
+ad_donors <- reps |>
+  map(\(rep) sample_by_sex(shared_ad, nrow(shared_ct), female_prop) |> pull(individualID)) |>
+  set_names(paste0("AD_", reps))
+donors <- c(list(CT_all = shared_ct$individualID), ad_donors)
 
-# For each network and region, the specimen of each donor in that region
+# For each network, the specimen of each of its donors in one region
 region_samples <- function(region, ad, ct) {
-  rbindlist(lapply(names(donors), function(net) {
-    group <- if (startsWith(net, "AD")) ad else ct
-    group[individualID %in% donors[[net]]][, `:=`(network = net, region = region)]
-  }))
+  donors |>
+    imap(\(ids, net) {
+      group <- if (startsWith(net, "AD")) ad else ct
+      group |>
+        filter(individualID %in% ids) |>
+        mutate(network = net, region = region)
+    }) |>
+    bind_rows()
 }
-subsamples <- rbind(
-  region_samples(region_a, samples$a_ad, samples$a_ct),
-  region_samples(region_b, samples$b_ad, samples$b_ct)
-)
-subsamples[, diagnosis := sub("_.*", "", network)]
-fwrite(
-  subsamples[, .(network, region, diagnosis, specimenID, individualID, sex, RIN)],
-  snakemake@output[[1]],
-  sep = "\t"
-)
 
-message(region_a, " + ", region_b, " | shared CT=", nrow(shared_ct),
-        " (", round(100 * female_prop, 1), "% female) | shared AD=", nrow(shared_ad))
-print(subsamples[, .(n = .N, pct_female = round(100 * mean(sex == "female"), 1)),
-                 by = .(network, region)])
+subsamples <- bind_rows(
+  region_samples(region_a, a_ad, a_ct),
+  region_samples(region_b, b_ad, b_ct)
+) |>
+  mutate(diagnosis = sub("_.*", "", network)) |>
+  select(network, region, diagnosis, specimenID, individualID, sex, RIN)
+
+vroom_write(subsamples, snakemake@output[[1]])
+
+message(
+  region_a, " + ", region_b, " | shared CT=", nrow(shared_ct),
+  " (", round(100 * female_prop, 1), "% female) | shared AD=", nrow(shared_ad)
+)
+print(summarise_networks(subsamples, region), n = Inf)
