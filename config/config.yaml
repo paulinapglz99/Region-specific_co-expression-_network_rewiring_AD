@@ -40,9 +40,21 @@ subsampling:
 
   # 4. Paired design: only donors sampled in both regions
   # (ARACNe rules do not support paired tables yet)
-  # Postponed: run only if results call for it. To enable, use:
+  # Conditional: run only if analyses 1-3 show differences between ROSMAP regions. To enable, use:
   #   paired: [[DLPFC, PCC], [DLPFC, ACC]]
   paired: []
+
+# Networks vs differential expression (docs/experimental_design.md, analyses 5 and 6)
+de:
+  adj_pvalue: 0.05 # DE gene: adj.P.Val < 0.05 ...
+  fold_change: 1.2 # ... and |FC| > 1.2, i.e. |logFC| > log2(1.2). Same as Sage's DEA
+  min_degree: 5 # Analysis 5: genes with >= 5 neighbors in the AD or the CT network
+  top_rewired: 0.10 # Analysis 5: "rewired" genes = top 10% by adjusted rewiring
+
+# Hubs (analysis 6)
+hubs:
+  top_pagerank: 0.01 # hub of a network = top 1% by PageRank (undirected, unweighted)
+  min_replicates: 8 # AD hub = hub in >= 8 of the 10 AD replicates
 
 # ARACNe-AP (https://github.com/califano-lab/ARACNe-AP)
 # Rule install_aracne downloads this commit and builds the jar with `ant main`

@@ -302,8 +302,9 @@ rule aracne_matrix:
         expression=group_expression,
         subsamples="results/subsamples/{design}/{table}.tsv",
     output:
+        # Both only feed ARACNe: deleted once the network's bootstraps are done
         matrix=temp("results/aracne/{design}/{table}/{network}/matrix.tsv"),
-        regulators="results/aracne/{design}/{table}/{network}/regulators.txt",
+        regulators=temp("results/aracne/{design}/{table}/{network}/regulators.txt"),
     log:
         "logs/aracne/{design}/{table}/{network}/matrix.log",
     conda:
@@ -354,8 +355,11 @@ rule aracne_bootstrap:
             )
         ),
         # ARACNe names its output with a random ID; we rename it with the seed so the
-        # name is known in advance and the consolidate step can request it by expand
-        network="results/aracne/{design}/{table}/{network}/bootstrap_networks/bootstrapNetwork_seed{seed}.txt",
+        # name is known in advance and the consolidate step can request it by expand.
+        # temp(): deleted once the network is consolidated (they are 100 per network)
+        network=temp(
+            "results/aracne/{design}/{table}/{network}/bootstrap_networks/bootstrapNetwork_seed{seed}.txt"
+        ),
     log:
         "logs/aracne/{design}/{table}/{network}/bootstrap_seed{seed}.log",
     conda:
@@ -390,9 +394,12 @@ rule aracne_consolidate:
         ),
         jar=config["aracne"]["jar"],
     output:
-        # ARACNe writes network.txt inside the folder it consolidates
-        consolidated="results/aracne/{design}/{table}/{network}/bootstrap_networks/network.txt",
-        # Final copy at the path rule all asks for
+        # ARACNe writes network.txt inside the folder it consolidates.
+        # temp(): it is an identical copy of the final network below
+        consolidated=temp(
+            "results/aracne/{design}/{table}/{network}/bootstrap_networks/network.txt"
+        ),
+        # Final network (kept)
         network="results/aracne/{design}/{table}/{network}/network.txt",
     log:
         "logs/aracne/{design}/{table}/{network}/consolidate.log",
