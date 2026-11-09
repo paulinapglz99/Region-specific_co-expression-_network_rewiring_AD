@@ -55,6 +55,21 @@ for g in SUB["curve"]:
     )
 
 
+# ---- Network comparisons (analyses 1-3) ---------------------------------------
+# Networks are read from {NET}/aracne/ and results are written to {NET}/metrics/.
+# NET = results for the ARACNe-AP networks, or results/simulated/... to test
+# (see network_source in config/config.yaml)
+NET = config["network_source"]
+
+# Subsample tables whose networks are compared: {design}/{table}
+COMPARED_TABLES = (
+    expand("matched/{region}", region=REGIONS)
+    + expand("equal_n/{region}", region=SUB["equal_n"]["regions"])
+    + [f"curve/{g['region']}_{g['dx']}_n{n}" for g in SUB["curve"] for n in g["n"]]
+)
+NETWORK_METRICS = [f"{NET}/metrics/{t}.tsv" for t in COMPARED_TABLES]
+
+
 wildcard_constraints:
     region="|".join(REGIONS),
     region_a="|".join(REGIONS),
@@ -79,6 +94,7 @@ rule all:
         NETWORKS_MATCHED,
         NETWORKS_CURVE,
         NETWORKS_EQUAL_N,
+        f"{NET}/metrics/network_metrics.pdf",
 
 
 # Run one design at a time, e.g.: snakemake networks_matched --sdm conda --cores 4
@@ -95,6 +111,12 @@ rule networks_curve:
 rule networks_equal_n:
     input:
         NETWORKS_EQUAL_N,
+
+
+# Comparisons between networks and their figure (analyses 1-3)
+rule network_comparisons:
+    input:
+        f"{NET}/metrics/network_metrics.pdf",
 
 
 # Files of the study a region comes from
@@ -239,7 +261,7 @@ rule subsample_curve:
         "scripts/subsample_curve.R"
 
 
-# 4. Paired (postponed): only donors with both regions, same donors in both networks
+# Paired (not in the current design): only donors with both regions, same donors in both networks
 rule subsample_paired:
     input:
         a_ad="results/samples/{region_a}_AD.tsv",
@@ -413,3 +435,75 @@ rule aracne_consolidate:
             -o $(dirname {output.consolidated}) --consolidate &>{log}
         cp {output.consolidated} {output.network}
         """
+
+
+# ---- Network comparisons (analyses 1-3) ---------------------------------------
+
+
+# Network files of one subsample table, e.g. matched/DLPFC -> CT_all + AD_rep01..10
+def table_networks(wildcards):
+    prefix = f"results/aracne/{wildcards.design}/{wildcards.table}/"
+    files = NETWORKS_MATCHED + NETWORKS_EQUAL_N + NETWORKS_CURVE
+    return [
+        f.replace("results/aracne", f"{NET}/aracne", 1)
+        for f in files
+        if f.startswith(prefix)
+    ]
+
+
+# J, Spearman rho of degree, NMI of Leiden communities and size of each pair of networks
+rule network_metrics:
+    input:
+        networks=table_networks,
+        subsamples="results/subsamples/{design}/{table}.tsv",
+        utils="workflow/scripts/R/network_utils.R",
+    output:
+        f"{NET}/metrics/{{design}}/{{table}}.tsv",
+    log:
+        f"{NET}/metrics/logs/{{design}}/{{table}}.log",
+    conda:
+        "envs/network_analysis.yaml"
+    params:
+        resolution=config["communities"]["resolution"],
+        seed=config["communities"]["seed"],
+    script:
+        "scripts/network_metrics.R"
+
+
+# Reference curve J_ref(n), rewiring index and region order of the equal_n design
+rule rewiring_index:
+    input:
+        metrics=NETWORK_METRICS,
+    output:
+        index=f"{NET}/metrics/rewiring_index.tsv",
+        curve=f"{NET}/metrics/reference_curve.tsv",
+        order=f"{NET}/metrics/region_order.tsv",
+    log:
+        f"{NET}/metrics/logs/rewiring_index.log",
+    conda:
+        "envs/data_wr.yaml"
+    params:
+        # Calibration group of the curve = its first entry, e.g. DLPFC_AD
+        calibration=f"{SUB['curve'][0]['region']}_{SUB['curve'][0]['dx']}",
+        equal_n_regions=SUB["equal_n"]["regions"],
+    script:
+        "scripts/rewiring_index.R"
+
+
+rule plot_network_metrics:
+    input:
+        index=f"{NET}/metrics/rewiring_index.tsv",
+        curve=f"{NET}/metrics/reference_curve.tsv",
+        order=f"{NET}/metrics/region_order.tsv",
+        theme="workflow/scripts/R/theme_pub.R",
+    output:
+        pdf=f"{NET}/metrics/network_metrics.pdf",
+        jpeg=f"{NET}/metrics/network_metrics.jpeg",
+    log:
+        f"{NET}/metrics/logs/plot_network_metrics.log",
+    conda:
+        "envs/plots_r.yaml"
+    params:
+        study_of=STUDY_OF,
+    script:
+        "scripts/plot_network_metrics.R"

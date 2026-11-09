@@ -38,23 +38,38 @@ subsampling:
     - {region: ACC, dx: AD, n: [85]} # validation
     - {region: PCC, dx: AD, n: [75]} # validation
 
-  # 4. Paired design: only donors sampled in both regions
-  # (ARACNe rules do not support paired tables yet)
-  # Conditional: run only if analyses 1-3 show differences between ROSMAP regions. To enable, use:
+  # Paired design: only donors sampled in both regions.
+  # Not part of the current design (not in docs/experimental_design.md).
+  # (ARACNe rules do not support paired tables yet). To enable, use:
   #   paired: [[DLPFC, PCC], [DLPFC, ACC]]
   paired: []
 
-# Networks vs differential expression (docs/experimental_design.md, analyses 5 and 6)
+# Folder with the networks to compare: networks in <network_source>/aracne/,
+# results in <network_source>/metrics/.
+#   results                      ARACNe-AP networks (the real ones)
+#   results/simulated/planted    simulated, with planted rewiring (workflow/scripts/simulate_networks.R)
+#   results/simulated/null       simulated, AD = CT
+# To test with simulated networks without editing this file:
+#   snakemake network_comparisons --config network_source=results/simulated/planted --sdm conda --cores 4
+network_source: results
+
+# Communities for the NMI: Leiden (modularity objective), undirected and unweighted
+communities:
+  resolution: 1
+  seed: 2026 # Leiden is stochastic: fixed seed, same partition every run
+
+# Networks vs differential expression (docs/experimental_design.md, analyses 4 and 5)
 de:
   adj_pvalue: 0.05 # DE gene: adj.P.Val < 0.05 ...
   fold_change: 1.2 # ... and |FC| > 1.2, i.e. |logFC| > log2(1.2). Same as Sage's DEA
-  min_degree: 5 # Analysis 5: genes with >= 5 neighbors in the AD or the CT network
-  top_rewired: 0.10 # Analysis 5: "rewired" genes = top 10% by adjusted rewiring
+  min_degree: 5 # Analysis 4: genes with >= 5 neighbors in the AD or the CT network
+  top_rewired: 0.10 # Analysis 4: "rewired" genes = top 10% by adjusted rewiring
+  top_de: 25 # Analysis 4, ego networks: top 25 DE up and top 25 DE down by |t|
 
-# Hubs (analysis 6)
+# Hubs (analysis 5)
 hubs:
   top_pagerank: 0.01 # hub of a network = top 1% by PageRank (undirected, unweighted)
-  min_replicates: 8 # AD hub = hub in >= 8 of the 10 AD replicates
+  min_replicates: 8 # AD hub (and gained ego neighbor) = in >= 8 of the 10 AD replicates
 
 # ARACNe-AP (https://github.com/califano-lab/ARACNe-AP)
 # Rule install_aracne downloads this commit and builds the jar with `ant main`

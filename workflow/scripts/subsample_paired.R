@@ -1,4 +1,4 @@
-# Design 4 (sensitivity): paired regions, same donors in both networks.
+# Paired design (not in the current design): paired regions, same donors in both networks.
 #
 # Only donors sampled in both regions are used.
 # CT: all shared CT donors ("CT_all").
