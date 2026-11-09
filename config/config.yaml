@@ -53,6 +53,11 @@ subsampling:
 #   snakemake network_comparisons --config network_source=results/simulated/planted --sdm conda --cores 4
 network_source: results
 
+# Folder with Sage's DE tables ({study}_Differential_Expression_(diagnosis).tsv).
+# The simulated networks only have 1500 genes per study, so they come with
+# their own DE tables (same rows, fewer genes): results/simulated/DE
+de_source: resources/DE
+
 # Communities for the NMI: Leiden (modularity objective), undirected and unweighted
 communities:
   resolution: 1
@@ -65,6 +70,13 @@ de:
   min_degree: 5 # Analysis 4: genes with >= 5 neighbors in the AD or the CT network
   top_rewired: 0.10 # Analysis 4: "rewired" genes = top 10% by adjusted rewiring
   top_de: 25 # Analysis 4, ego networks: top 25 DE up and top 25 DE down by |t|
+
+# Stratified permutation null (analyses 4, 5 and 7): DE labels are shuffled
+# among genes of the same expression (and degree) stratum
+permutation:
+  n: 1000 # permutations per test
+  strata: 10 # bins (deciles) of AveExpr and of degree
+  seed: 2026
 
 # Hubs (analysis 5)
 hubs:
