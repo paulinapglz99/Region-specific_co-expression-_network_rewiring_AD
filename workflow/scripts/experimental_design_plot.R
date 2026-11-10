@@ -50,14 +50,14 @@ boxes <- tribble(
   "Metrics: edge Jaccard (J), Spearman ρ of degree, NMI of Leiden communities, mean degree",
   # Block B: networks and differential expression
   "b4", 10, 93, 27, 49, "B", "4 · Rewiring vs DE",
-  "Per-gene rewiring, adjusted for degree and expression\nEgo networks of the top 25 up and 25 down DE genes\nDE: Sage, adj. P < 0.05 and |FC| > 1.2\nInput: networks of 1",
+  "Per-gene neighbor change, adjusted for degree and expression\nRewired genes (top 10%) vs DE genes: odds ratio\nGO terms of the rewired, not DE genes\nDE: Sage, adj. P < 0.05 and |FC| > 1.2\nInput: networks of 1",
   "b5", 98, 181, 27, 49, "B", "5 · Hubs vs DE",
-  "Hub: top 1% PageRank, in ≥ 8 of 10 AD replicates\nShared, gained and lost hubs\nRegion-exclusive hubs vs binomial and permutation nulls\nInput: networks of 1",
+  "Hub: top 1% PageRank, in ≥ 8 of 10 AD replicates\nShared, gained and lost hubs\nEach hub type vs DE genes: odds ratio\nSame test and null as 4\nInput: networks of 1",
   # Block C: biological validation
   "c6", 10, 93, 2, 22, "C", "6 · Regional vulnerability (pre-registered)",
   "Prediction: TCX more rewired than CBE\nRewiring index and direct J\nWilcoxon p < 0.05 over 10 replicates\nInput: 1 and 3",
   "c7", 98, 181, 2, 22, "C", "7 · AD risk genes",
-  "Prioritized genes of Bellenguez et al. (2022)\nEnrichment among rewired genes\nand among gained and lost hubs\nInput: 4 and 5"
+  "Prioritized genes of Bellenguez et al. (2022)\nRisk genes vs rewired genes and vs gained\nand lost hubs: same test as 4 and 5\nInput: 4 and 5 (supplement)"
 )
 
 # Block labels: a colored strip at the left of each block

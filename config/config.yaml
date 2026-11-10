@@ -23,7 +23,6 @@ subsampling:
     matched: 10
     equal_n: 10
     curve: 5
-    paired: 10
   seed: 2026
 
   # 2. Same n in every network, to test if the region ranking depends on n
@@ -37,12 +36,6 @@ subsampling:
     - {region: DLPFC, dx: CT, n: [70]} # validation
     - {region: ACC, dx: AD, n: [85]} # validation
     - {region: PCC, dx: AD, n: [75]} # validation
-
-  # Paired design: only donors sampled in both regions.
-  # Not part of the current design (not in docs/experimental_design.md).
-  # (ARACNe rules do not support paired tables yet). To enable, use:
-  #   paired: [[DLPFC, PCC], [DLPFC, ACC]]
-  paired: []
 
 # Folder with the networks to compare: networks in <network_source>/aracne/,
 # results in <network_source>/metrics/.
@@ -63,25 +56,48 @@ communities:
   resolution: 1
   seed: 2026 # Leiden is stochastic: fixed seed, same partition every run
 
+# Analysis 6: prediction registered on 2026-11-06, before inferring any network.
+# Do not change: holds if the mean rewiring index of more_rewired < that of
+# less_rewired and the Wilcoxon test of their matched replicates gives p < max_p
+prediction:
+  more_rewired: TCX
+  less_rewired: CBE
+  max_p: 0.05
+
 # Networks vs differential expression (docs/experimental_design.md, analyses 4 and 5)
 de:
   adj_pvalue: 0.05 # DE gene: adj.P.Val < 0.05 ...
   fold_change: 1.2 # ... and |FC| > 1.2, i.e. |logFC| > log2(1.2). Same as Sage's DEA
   min_degree: 5 # Analysis 4: genes with >= 5 neighbors in the AD or the CT network
   top_rewired: 0.10 # Analysis 4: "rewired" genes = top 10% by adjusted rewiring
-  top_de: 25 # Analysis 4, ego networks: top 25 DE up and top 25 DE down by |t|
+  top_rewired_sensitivity: [0.05, 0.20] # Analysis 4: same test with these top fractions
+  min_replicates: 8 # Analysis 4: robust rewired gene = in the top 10% in >= 8 of the 10 AD replicates
 
-# Stratified permutation null (analyses 4, 5 and 7): DE labels are shuffled
-# among genes of the same expression (and degree) stratum
+# Overlap test of analyses 4, 5 and 7 (workflow/scripts/R/de_utils.R): labels
+# are shuffled among genes of the same stratum of expression (and degree)
 permutation:
   n: 1000 # permutations per test
   strata: 10 # bins (deciles) of AveExpr and of degree
   seed: 2026
 
+# Analysis 4: GO over-representation of the "rewired only" genes (clusterProfiler)
+go:
+  ontology: BP # GO Biological Process
+  min_size: 10 # GO terms with 10 to 500 genes in the universe
+  max_size: 500
+  adj_pvalue: 0.05 # significant term: BH-adjusted p < 0.05
+
 # Hubs (analysis 5)
 hubs:
-  top_pagerank: 0.01 # hub of a network = top 1% by PageRank (undirected, unweighted)
-  min_replicates: 8 # AD hub (and gained ego neighbor) = in >= 8 of the 10 AD replicates
+  top_pagerank: 0.01 # hub of a network = top 1% of the genes by PageRank (undirected, unweighted)
+  min_replicates: 8 # hub in AD = hub in >= 8 of the 10 AD replicates
+  max_replicates_lost: 2 # not hub in AD = hub in <= 2 of the 10 (3-7: not classified)
+
+# Analysis 7: AD risk genes. Tier 1 and Tier 2 prioritized genes of the 42 new
+# loci of Bellenguez et al. (2022), Nat Genet 54:412-436, Supplementary Table 20.
+# Decision: only these genes. The 33 previously known loci (APOE, BIN1, CLU,
+# TREM2...) are not in that table and are not included.
+risk_genes: config/ad_risk_genes.tsv
 
 # ARACNe-AP (https://github.com/califano-lab/ARACNe-AP)
 # Rule install_aracne downloads this commit and builds the jar with `ant main`

@@ -26,8 +26,8 @@ Este diseño compara el rewiring entre regiones con el n igualado y con una refe
 1. ¿Cuánto rewiring hay entre AD y CT en cada región, con el mismo n en ambas redes? (análisis 1)
 2. ¿El orden de las regiones por rewiring depende del n? (análisis 2)
 3. ¿Qué similitud se espera entre dos redes cuando no hay diferencia biológica, y cuánto rewiring queda después de descontarla? (análisis 3)
-4. ¿Los genes que más se recablean son los genes DE, y cómo cambia el vecindario de los genes más DE? (análisis 4)
-5. ¿Los hubs de cada región son genes DE, y hay hubs exclusivos de una región? (análisis 5)
+4. ¿Los genes que más se recablean son los genes DE, o la red detecta genes que el DE no ve? (análisis 4)
+5. ¿Los hubs que se ganan o se pierden en AD son genes DE? (análisis 5)
 6. ¿El rewiring sigue la vulnerabilidad regional conocida de AD? (análisis 6)
 7. ¿Los genes de riesgo genético de AD están entre los genes que cambian en la red? (análisis 7)
 
@@ -90,7 +90,9 @@ Cada gen se clasifica en su región como **DE arriba** (sube en AD), **DE abajo*
 
 ### Genes de riesgo genético de AD
 
-Son los genes priorizados por Bellenguez et al. (2022) para los 75 loci de riesgo de AD que reporta ese estudio. La lista se guarda como archivo en `config/`, con la referencia. Los símbolos se traducen a IDs de Ensembl con la columna `hgnc_symbol` de los archivos de DE.
+Son los genes priorizados por Bellenguez et al. (2022), de su Tabla Suplementaria 20: los **55 genes Tier 1 y Tier 2** de los **42 loci nuevos** que reporta ese estudio. La lista está en `config/ad_risk_genes.tsv` (símbolo, ID de Ensembl, locus y tier), así que no hace falta traducir símbolos.
+
+**Decisión: se usan solo los genes de los 42 loci nuevos.** Los 33 loci ya conocidos antes de ese estudio (por ejemplo APOE, BIN1, CLU o TREM2) no están en la Tabla Suplementaria 20 y no se incluyen.
 
 ## Principios del diseño
 
@@ -185,8 +187,6 @@ El diagrama se genera con `workflow/scripts/experimental_design_plot.R`, fuera d
 
 **Resultado:** J promedio AD vs CT por región con su dispersión entre réplicas, y de ahí el **orden de las regiones por rewiring**.
 
-**Descripción de las redes de cada región.** Para describir la red CT se usa `CT_all`, que ya incluye a todos los donantes CT. Para describir la red AD se usa una **red consenso**: los enlaces presentes en la mayoría de las réplicas AD.
-
 #### Análisis 2. Robustez al n · `equal_n`
 
 **Pregunta:** en el análisis 1, cada región tiene un n distinto (por ejemplo, DLPFC tiene n = 141 y ACC n = 94). ¿El orden de las regiones cambia si todas tienen el mismo n?
@@ -231,97 +231,82 @@ Ejemplo con valores hipotéticos: si en PCC (n = 99) J(AD, CT) = 0.087 y J_ref(9
 
 ### Bloque B. Redes y expresión diferencial
 
-Los análisis 4 y 5 usan las redes del análisis 1: por región, la red `CT_all` y las 10 redes `AD_rep01` … `AD_rep10`.
+Los análisis 4 y 5 usan las redes del análisis 1: por región, la red `CT_all` y las 10 redes `AD_rep01` … `AD_rep10`. Un gen que no aparece en una red tiene grado 0 en esa red.
 
-**Medidas por gen y por red:** el grado (número de vecinos), la lista de vecinos y el PageRank (Brin y Page, 1998). Un gen que no aparece en una red tiene grado 0 en esa red.
+![Explicación de los análisis 4 y 5 y de la prueba común](figures/analyses_4_5_explainer.jpeg)
 
-**Confusor principal: el nivel de expresión.** Un gen muy expresado y variable tiene más poder para salir DE y también tiende a tener más vecinos en ARACNe. Si no se controla, cualquier asociación entre la red y el DE podría deberse solo a eso. Por eso todas las pruebas de los análisis 4 y 5 se ajustan por expresión media (`AveExpr`), y las del análisis 4 además por grado.
+La figura se genera con `workflow/scripts/analyses_4_5_explainer_plot.R`, fuera del pipeline. Los valores de las gráficas pequeñas son ilustrativos.
 
-**Nulo por permutación estratificada.** Los genes no son independientes (están conectados en la red), así que los p-valores de pruebas clásicas como Fisher o Wilcoxon serían demasiado optimistas. Como nulo se usan **conjuntos de genes al azar con la misma distribución de expresión** (y de grado, cuando corresponde) que el conjunto observado. Por ejemplo, para preguntar si los hubs son DE con más frecuencia de lo esperado, se sortean muchas veces conjuntos de genes con la misma expresión que los hubs y se cuenta cuántos son DE en cada conjunto. El p-valor es la fracción de sorteos que igualan o superan lo observado.
+#### La prueba común de los análisis 4, 5 y 7
 
-#### Análisis 4. ¿Los genes que más se recablean son los genes DE?
+Los tres análisis hacen la misma pregunta: **¿un conjunto de genes contiene más genes de otro tipo de lo esperado?** Por ejemplo, ¿hay más genes DE entre los genes recableados de lo que se esperaría por azar? Los tres usan la misma prueba.
 
-**Pregunta:** un gen puede cambiar su **nivel** de expresión en AD (DE), cambiar **con quién está conectado** en la red (rewiring), o ambas cosas. ¿Son los mismos genes, o la red detecta cambios que el DE no ve? Y en los genes con el cambio de expresión más fuerte, ¿cómo cambia su vecindario en la red?
+**Confusor principal: el nivel de expresión.** Un gen muy expresado y variable tiene más poder para salir DE, y también tiende a tener más vecinos en ARACNe. Si no se controla, cualquier asociación entre la red y el DE podría deberse solo a eso.
 
-**Perspectiva metodológica:** se mide el rewiring de cada gen, se corrige por su grado y su expresión, y se compara con su estado DE (pasos 1–6). Después, en los genes más DE se mira el vecindario completo, no solo sus propios enlaces (paso 7).
+**Por qué no se usa una prueba de Fisher.** Los genes no son independientes, porque están conectados en la red, así que el p-valor de Fisher sería demasiado optimista. Además, Fisher no controla la expresión.
 
-**1. Dos medidas de rewiring por gen**, calculadas en cada réplica (red `AD_repk` contra `CT_all`) y promediadas sobre las 10 réplicas:
+**La prueba, para un conjunto A (por ejemplo, los genes recableados) y un tipo de gen B (por ejemplo, DE):**
 
-| Medida | Qué mide | Cálculo |
-|---|---|---|
-| **Cambio de vecinos** | Si el gen está conectado con *otros* genes en AD | 1 − J entre sus vecinos en AD y en CT. Vale 0 si tiene exactamente los mismos vecinos y 1 si no comparte ninguno |
-| **Cambio de grado** | Si el gen gana o pierde conexiones en AD | log2((grado AD + 1) / (grado CT + 1)). Positivo si gana vecinos y negativo si los pierde |
+1. **Estratos:** los genes se agrupan por deciles de expresión media (`AveExpr`) y, cuando corresponde, también por deciles de grado.
+2. **Nulo:** las etiquetas B se reparten al azar entre genes del **mismo estrato**, 1000 veces. Así, en cada permutación los genes B tienen la misma distribución de expresión (y de grado) que los observados.
+3. **Estadístico:** el número de genes que son A y B a la vez. La permutación conserva el tamaño de A y el número de genes B, así que este número es equivalente al odds ratio.
+4. **Resultados:** el odds ratio (OR) de la tabla 2×2 A × B, los genes en común esperados por azar (promedio del nulo) y el p por permutación (de dos colas).
+5. **Corrección múltiple:** Benjamini–Hochberg (BH) dentro de cada análisis, entre regiones (y entre conjuntos, cuando hay varios). El p corregido se llama **q**.
 
-**2. Filtro de grado.** Con pocos vecinos, el cambio de vecinos es muy ruidoso: con 1 vecino en cada red solo puede valer 0 o 1. Se analizan solo los genes con al menos **5 vecinos** en la red AD (grado promedio de las réplicas) o en la red CT.
+**Qué estratos usa cada prueba:** expresión y grado cuando el conjunto A son genes recableados, porque el rewiring de un gen depende de su grado. Solo expresión cuando A son hubs: los hubs se definen justamente por sus conexiones, así que igualar el grado eliminaría lo que se quiere probar.
 
-**3. Corrección por grado y expresión.** El cambio de vecinos depende del grado: los genes con más vecinos tienden a valores más bajos. Se ajusta un modelo del cambio de vecinos en función del grado medio y de `AveExpr`, y se usa el **residuo** como **rewiring ajustado**: cuánto se recablea un gen más (o menos) de lo esperado para su grado y su expresión.
+#### Análisis 4. ¿Los genes recableados son DE?
 
-**4. Pruebas, por región:**
-- **¿Los genes DE se recablean más?** Regresión: rewiring ajustado ~ DE (sí/no). Se reporta el efecto de ser DE con su intervalo de confianza, y un p-valor por permutación estratificada.
-- **¿Hay solapamiento entre recableados y DE?** Se definen como **genes recableados** el top 10% por rewiring ajustado y se cruzan con los DE. Se reporta la razón de momios (odds ratio) y un p-valor por permutación estratificada.
-- **Versión continua, sin umbrales:** correlación de Spearman entre el rewiring ajustado y \|`t`\| de DE.
-- **¿Hay relación con la dirección del cambio?** ¿Los genes DE arriba ganan vecinos y los DE abajo los pierden? Se compara el cambio de grado entre DE arriba, DE abajo y no DE.
+**Pregunta:** un gen puede cambiar su **nivel** de expresión en AD (DE), cambiar **con quién está conectado** en la red (rewiring), o ambas cosas. ¿Son los mismos genes, o la red detecta cambios que el DE no ve?
 
-**5. Cuatro grupos de genes por región**, que son el resultado descriptivo principal:
+1. **Cambio de vecinos de cada gen** = 1 − J entre sus vecinos en AD y en CT. Vale 0 si tiene exactamente los mismos vecinos y 1 si no comparte ninguno. Se calcula en cada réplica (`AD_repk` contra `CT_all`) y se promedia sobre las 10 réplicas.
 
-| | DE | No DE |
-|---|---|---|
-| **Recableado** | Cambian nivel y conexiones | **Solo la red detecta el cambio** |
-| **No recableado** | Solo cambia el nivel | Sin cambio |
+   Ejemplo con valores inventados: un gen tiene 8 vecinos en CT y 10 en AD, y comparte 4. Tiene 14 vecinos distintos en total, así que su cambio de vecinos es 1 − 4/14 = 0.71.
 
-Los genes **recableados no DE** son los cambios en AD que el DE no ve, y son el aporte propio del análisis de redes. Se caracterizan con análisis de enriquecimiento funcional.
+2. **Filtro de grado:** solo los genes con al menos **5 vecinos** en la red AD (grado promedio de las réplicas) o en la red CT. Con pocos vecinos la medida es ruido: con 1 vecino en cada red solo puede valer 0 o 1.
 
-**6. Robustez entre réplicas.** Las pruebas se repiten en cada una de las 10 réplicas, y se reporta qué tan estable es el resultado entre ellas además del resultado con el promedio.
+3. **Rewiring ajustado:** el cambio de vecinos depende del grado (los genes con más vecinos tienden a valores más bajos) y de la expresión. Se ajusta el modelo `cambio de vecinos ~ log(grado medio) + AveExpr`, y el **residuo** es el rewiring ajustado: cuánto se recablea un gen más (o menos) de lo esperado para su grado y su expresión.
 
-**7. Redes ego de los genes más DE.** Los pasos 1–6 miran todos los genes, y solo los enlaces de cada gen. Este paso se enfoca en los genes con el cambio de expresión más fuerte y mira su vecindario completo.
+4. **Genes recableados** = el top 10% por rewiring ajustado. El rewiring ajustado ordena los genes **dentro de cada región**; no compara la magnitud del rewiring entre regiones, que la da el índice de rewiring (análisis 3).
 
-- **Genes elegidos, por región:** los **25 genes DE arriba y los 25 DE abajo** con mayor \|`t`\|, entre los genes que pasan el filtro de grado del paso 2. Se reporta cuántos de los genes más DE quedaron fuera por ese filtro.
-- **Red ego de un gen:** el gen, sus vecinos directos y todos los enlaces entre ellos, en una red.
-- **Medidas por gen**, en cada réplica (`AD_repk` contra `CT_all`) y promediadas sobre las 10 réplicas:
+5. **Prueba:** recableados × DE, con la prueba común (estratos de expresión × grado).
 
-| Medida | Qué mide | Cálculo |
-|---|---|---|
-| **J del ego** | Si el vecindario completo se conserva, incluidos los enlaces entre los vecinos | J entre los enlaces de la red ego en AD y en CT |
-| **Densidad del ego** | Si los vecinos están conectados entre sí | Enlaces entre vecinos / pares posibles de vecinos, en AD y en CT |
-| **Fracción DE del vecindario** | Si en AD el gen se rodea de otros genes DE | Vecinos DE / vecinos, en AD y en CT |
-| **Concordancia de dirección** | Si los vecinos DE cambian en la misma dirección que el gen | Vecinos DE con la misma dirección / vecinos DE, en AD y en CT |
+6. **Cuatro grupos de genes por región**, que son el resultado descriptivo principal:
 
-  La J del ego se diferencia del cambio de vecinos del paso 1: el cambio de vecinos solo mira los enlaces del gen, y la J del ego también mira los enlaces entre sus vecinos.
+   | | DE | No DE |
+   |---|---|---|
+   | **Recableado** | Cambian nivel y conexiones | **Solo la red detecta el cambio** |
+   | **No recableado** | Solo cambia el nivel | Sin cambio |
 
-- **Vecinos ganados y perdidos** (usando el mismo criterio de réplicas que los hubs del análisis 5):
-  - **ganado en AD:** vecino en al menos 8 de las 10 réplicas AD y no vecino en CT;
-  - **perdido en AD:** vecino en CT y en a lo más 2 de las 10 réplicas AD.
-- **Pruebas:** para cada medida, se compara el grupo de genes más DE contra genes no DE con la misma expresión media y el mismo grado (permutación estratificada). La pregunta es si el vecindario de los genes más DE cambia más de lo que cambia el de un gen cualquiera de esa expresión y ese grado.
-- **Resultado descriptivo:** una tabla por región con los genes elegidos, sus medidas y sus vecinos ganados y perdidos. La unión de los vecinos ganados y la de los perdidos se caracterizan con análisis de enriquecimiento funcional.
-- **Figura:** las redes ego en CT y en AD de algunos de los genes elegidos, uno por panel.
+   Los genes **recableados no DE** son los cambios en AD que el DE no ve, y son el aporte propio del análisis de redes.
 
-#### Análisis 5. ¿Los hubs de cada región son genes DE?
+7. **Enriquecimiento funcional de los recableados no DE:** sobre-representación de términos de GO Biological Process (`clusterProfiler`), con BH dentro de cada región. El universo son los genes de la región que pasan el filtro de grado, porque son los que podían salir recableados.
 
-**Pregunta:** ¿los genes más centrales de cada red cambian de expresión en AD? ¿Hay hubs que cambian solo en una región?
+**Robustez (suplemento):**
+- **Umbral:** la prueba se repite con el top 5% y el top 20%, para ver si el resultado depende del 10% elegido.
+- **Réplicas:** el rewiring ajustado se calcula también en cada una de las 10 réplicas AD por separado (mismos genes y mismo modelo). Con eso:
+  - el OR se calcula en cada réplica, y se reporta su rango;
+  - **recableado robusto** = gen en el top 10% en al menos 8 de las 10 réplicas, el mismo criterio que los hubs del análisis 5. Es la lista que responde "¿cuáles son los genes con más rewiring?", porque no depende de qué donantes AD salieron en el sorteo. Se reporta en una tabla por región, ordenada por rewiring ajustado, con el número de regiones en que cada gen es recableado robusto.
+  - **Límite:** las 10 réplicas AD se comparan contra la misma red CT. El criterio protege contra el sorteo de donantes AD, pero no contra el ruido de esa única red CT: un gen con enlaces falsos en `CT_all` puede parecer recableado en las 10 réplicas. En la simulación sin cambios (AD = CT) salieron 6 a 13 recableados robustos por región por esta razón, contra 15 a 21 en la simulación con cambios plantados.
 
-**Perspectiva metodológica:** se definen hubs estables entre réplicas, se clasifican según cambien o no entre AD y CT, y se comparan con el DE dentro de cada región y entre regiones.
+La prueba del paso 5 usa los recableados del promedio (exactamente el 10% de los genes), no los robustos, porque el número de robustos cambia de una región a otra.
 
-**1. Definición de hub:**
-- **PageRank** en la red no dirigida y sin pesos.
-- **Hub de una red** = gen en el top 1% de PageRank de esa red (~190 genes).
-- **Hub CT** de la región = hub de `CT_all`.
-- **Hub AD** de la región = hub en al menos 8 de las 10 réplicas AD. Así se descartan hubs que dependen del sorteo.
+#### Análisis 5. ¿Los hubs que cambian son DE?
 
-**2. Tres tipos de hub por región:**
-- **compartido:** hub en AD y en CT;
-- **ganado en AD:** hub en AD pero no en CT;
-- **perdido en AD:** hub en CT pero no en AD.
+**Pregunta:** ¿los genes que ganan o pierden centralidad en AD son genes que cambian de expresión?
 
-**3. Pruebas dentro de cada región:**
-- **¿Los hubs son DE con más frecuencia de lo esperado?** Para cada tipo de hub, se compara la fracción de genes DE con la de conjuntos al azar de la misma expresión (permutación estratificada por `AveExpr`).
-- **¿Los hubs ganados son DE arriba y los perdidos DE abajo?** Se compara la dirección del DE entre los tres tipos de hub.
+1. **Hub de una red** = gen en el top 1% de PageRank (Brin y Page, 1998) de esa red, con la red no dirigida y sin pesos. El 1% se cuenta sobre todos los genes del estudio (~190 genes).
+2. **Hub en CT** = hub de `CT_all`. **En AD** se usan las 10 réplicas, con dos umbrales simétricos:
+   - **hub en AD:** hub en al menos 8 de las 10 réplicas;
+   - **no hub en AD:** hub en a lo más 2 de las 10 réplicas.
+3. **Tipos de hub por región:**
+   - **compartido:** hub en CT y hub en AD;
+   - **ganado en AD:** no es hub en CT y es hub en AD;
+   - **perdido en AD:** hub en CT y no hub en AD.
 
-**4. Hubs exclusivos de una región y compartidos entre regiones.** Se hace dos veces, por separado: con los **hubs ganados en AD** y con los **hubs perdidos en AD**.
-- **Conteo observado:** para cada gen, en cuántas regiones es hub ganado (o perdido). Se cuentan los genes que lo son en exactamente 1, 2… regiones.
-- **Esperado por azar:** si cada región tiene k hubs elegidos al azar entre N genes, la probabilidad de que un gen sea hub en exactamente m de R regiones es binomial, C(R, m) · p^m · (1 − p)^(R − m), con p = k/N. Multiplicada por N, da cuántos genes se esperarían con esa frecuencia por azar.
-- **Nulo más estricto:** algunos genes tienden a ser hub en cualquier red, por su expresión. Se complementa con un nulo por permutación que conserva la expresión de los genes.
-- **Universo:** dentro de ROSMAP (3 regiones), los genes de ROSMAP. Para las 5 regiones, solo los genes presentes en ambos estudios.
-- **Relación con DE:** ¿los hubs exclusivos de una región son DE en esa región con más frecuencia que en las otras? Como el número de genes DE cambia mucho entre regiones (TCX tiene muchos más), se compara el **enriquecimiento** de DE en cada región (DE entre los hubs exclusivos contra DE en todo el universo), no el número bruto.
+   Un hub de CT que es hub en 3 a 7 réplicas AD no se clasifica: no se sabe si se pierde o no.
+4. **Prueba:** cada tipo de hub × DE, con la prueba común (estratos de expresión). El universo son los genes con al menos un enlace en alguna red de la región.
+5. **Lista de hubs ganados y perdidos por región** (suplemento).
 
 ### Bloque C. Validación biológica
 
@@ -341,23 +326,22 @@ Los genes **recableados no DE** son los cambios en AD que el DE no ve, y son el 
 - Se calcula el índice de rewiring de cada una de las 10 réplicas de TCX y de CBE.
 - **La predicción se cumple** si el índice promedio de TCX es menor que el de CBE y la diferencia entre las dos distribuciones de réplicas es significativa (Wilcoxon, p < 0.05).
 - El resultado se reporta se cumpla o no. Si no se cumple, se discute por qué.
+- La misma prueba se reporta también con la J directa.
 
 **No hay predicción para las regiones de ROSMAP** (DLPFC, ACC, PCC). La literatura no da un orden claro de vulnerabilidad entre ellas, así que su orden se reporta como resultado exploratorio.
 
 #### Análisis 7. ¿Los genes de riesgo genético de AD están entre los genes que cambian en la red?
 
-**Pregunta:** ¿los genes asociados a AD por estudios genéticos (por ejemplo APOE, TREM2, BIN1 o CLU) son genes recableados (análisis 4) o hubs que cambian (análisis 5) con más frecuencia de lo esperado?
+**Pregunta:** ¿los genes asociados a AD por estudios genéticos (ver "Datos") son genes recableados (análisis 4) o hubs que cambian (análisis 5) con más frecuencia de lo esperado?
 
-**Perspectiva metodológica:** se cruza la lista de genes de riesgo (ver "Datos") con los resultados de los análisis 4 y 5, con el mismo nulo que esos análisis.
+1. **Pruebas, por región**, con la prueba común:
+   - genes de riesgo × genes recableados (universo y estratos del análisis 4: expresión × grado);
+   - genes de riesgo × hubs ganados en AD, y genes de riesgo × hubs perdidos en AD (universo y estratos del análisis 5: expresión).
 
-1. **Enriquecimiento, por región:**
-   - entre los genes recableados (top 10% del análisis 4);
-   - entre los hubs ganados en AD y entre los hubs perdidos en AD (análisis 5).
+   BH entre las 5 regiones × 3 conjuntos.
+2. **Tabla descriptiva:** para cada gen de riesgo y cada región, su percentil de rewiring ajustado, si es recableado, su tipo de hub y si es DE.
 
-   El nulo es la permutación estratificada de los análisis 4 y 5: genes al azar con la misma expresión media (y el mismo grado, en el caso de los genes recableados).
-2. **Tabla descriptiva:** para cada gen de riesgo, su percentil de rewiring, si es hub (en AD o en CT) y si es DE, en cada región.
-
-**Poder estadístico:** la lista de riesgo tiene del orden de decenas de genes. Con tan pocos genes, la prueba de enriquecimiento tiene poco poder, y la tabla descriptiva puede ser tan informativa como el p-valor.
+**Poder estadístico:** con 55 genes de riesgo, la prueba tiene poco poder, y la tabla descriptiva puede ser tan informativa como el p-valor. Por eso este análisis va al suplemento.
 
 ## Resumen metodológico e implementación
 
@@ -368,10 +352,10 @@ Los genes **recableados no DE** son los cambios en AD que el DE no ve, y son el 
 | 1. `matched` | ¿Cuánto rewiring hay por región? | 55 | principal |
 | 2. `equal_n` | ¿El orden de regiones depende del n? | 60 | suplemento |
 | 3. `curve` | ¿Qué J se espera sin diferencia biológica (J_ref)? | 60 | principal (índice) y suplemento (curva) |
-| 4. Rewiring y DE | ¿Los genes recableados son DE? ¿Cómo cambia el vecindario de los más DE? | 0 | principal |
-| 5. Hubs y DE | ¿Los hubs son DE? ¿Hay hubs exclusivos de región? | 0 | principal |
-| 6. Vulnerabilidad regional | ¿TCX tiene más rewiring que CBE? | 0 | principal |
-| 7. Genes de riesgo | ¿Los genes de riesgo cambian en la red? | 0 | principal o suplemento |
+| 4. Rewiring y DE | ¿Los genes recableados son DE? | 0 | principal |
+| 5. Hubs y DE | ¿Los hubs ganados y perdidos son DE? | 0 | principal |
+| 6. Vulnerabilidad regional | ¿TCX tiene más rewiring que CBE? | 0 | principal (en la figura del índice) |
+| 7. Genes de riesgo | ¿Los genes de riesgo cambian en la red? | 0 | suplemento |
 | **Total** | | **175** | |
 
 ### Parámetros
@@ -391,9 +375,14 @@ Todos están en `config/config.yaml`:
 | Gen DE: cambio | \|FC\| > 1.2 | `de: fold_change` |
 | Grado mínimo (análisis 4) | 5 vecinos, en AD o en CT | `de: min_degree` |
 | Genes recableados (análisis 4) | top 10% por rewiring ajustado | `de: top_rewired` |
-| Genes más DE para las redes ego (análisis 4) | 25 DE arriba y 25 DE abajo, por \|`t`\| | `de: top_de` |
-| Hub de una red (análisis 5) | top 1% por PageRank sin pesos | `hubs: top_pagerank` |
-| Hub AD y vecino ganado (análisis 4 y 5) | en ≥ 8 de las 10 réplicas AD | `hubs: min_replicates` |
+| Umbrales de sensibilidad (análisis 4) | top 5% y top 20% | `de: top_rewired_sensitivity` |
+| Enriquecimiento funcional (análisis 4) | GO Biological Process, términos de 10 a 500 genes, q < 0.05 | `go` |
+| Prueba común (análisis 4, 5 y 7) | 1000 permutaciones, estratos por deciles | `permutation` |
+| Hub de una red (análisis 5) | top 1% de los genes por PageRank sin pesos | `hubs: top_pagerank` |
+| Hub en AD (análisis 5) | en ≥ 8 de las 10 réplicas AD | `hubs: min_replicates` |
+| No hub en AD (análisis 5) | en ≤ 2 de las 10 réplicas AD | `hubs: max_replicates_lost` |
+| Predicción registrada (análisis 6) | TCX < CBE en el índice, Wilcoxon p < 0.05 | `prediction` |
+| Genes de riesgo (análisis 7) | 55 genes de Bellenguez et al. (2022) | `risk_genes` |
 
 ### Pipeline
 
@@ -412,16 +401,35 @@ El pipeline está en Snakemake (`workflow/Snakefile`), con un entorno de conda p
 | Bootstraps | `aracne_bootstrap` | `results/aracne/{design}/{table}/{network}/bootstrap_networks/bootstrapNetwork_seed{seed}.txt` (temporales) | 175 × 100 |
 | Red consolidada (p < 0.05) | `aracne_consolidate` | `results/aracne/{design}/{table}/{network}/network.txt` | 175 |
 | Métricas de cada par de redes (J, ρ, NMI, grado medio) | `network_metrics` | `results/metrics/{design}/{table}.tsv` | 14 |
-| Curva J_ref(n), índice de rewiring y orden de regiones (análisis 2) | `rewiring_index` | `results/metrics/rewiring_index.tsv`, `reference_curve.tsv` y `region_order.tsv` | 3 |
-| Figura de los análisis 1–3 | `plot_network_metrics` | `results/metrics/network_metrics.pdf` y `.jpeg` | 2 |
+| Curva J_ref(n), índice de rewiring, orden de regiones (análisis 2) y predicción registrada (análisis 6) | `rewiring_index` | `results/metrics/rewiring_index.tsv`, `reference_curve.tsv`, `region_order.tsv` y `prediction.tsv` | 4 |
+| Figura 1 y Figura S3 (análisis 1–3 y 6) | `plot_network_metrics` | `results/figures/figure1/` y `results/figures/figureS3/` | 2 carpetas |
+| Cambio de vecinos de cada gen (análisis 4) | `gene_rewiring` | `results/genes/rewiring/{region}.tsv` y `{region}_replicates.tsv` | 10 |
+| Recableados × DE, 4 grupos, sensibilidad, réplicas y recableados robustos (análisis 4) | `rewiring_vs_de` | `results/genes/rewiring_genes.tsv`, `rewiring_tests.tsv`, `rewiring_replicates.tsv` y `rewiring_robust.tsv` | 4 |
+| GO de los recableados no DE (análisis 4) | `go_rewired` | `results/genes/rewiring_go.tsv` | 1 |
+| Tipos de hub × DE (análisis 5) | `hubs` | `results/genes/hubs_genes.tsv` y `hubs_tests.tsv` | 2 |
+| Genes de riesgo (análisis 7) | `risk_genes` | `results/genes/risk_genes_tests.tsv` y `risk_genes_table.tsv` | 2 |
+| Figura 2 (análisis 4 y 5) y Figura S4 (robustez del análisis 4) | `plot_networks_de` | `results/figures/figure2/` y `results/figures/figureS4/` | 2 carpetas |
 
-Los análisis 4–7 todavía no tienen reglas en el pipeline.
+**Figuras.** Cada figura tiene su carpeta en `results/figures/`, con la figura completa y un archivo por panel, en PDF y JPEG. Por ejemplo, `results/figures/figure1/` contiene `figure1.pdf`, `1a.pdf`, `1b.pdf`, `1c.pdf` y `1d.pdf`. La Figura S1 (demografía) la hace `plot_demographics`. Con redes simuladas, las figuras van a `results/simulated/{escenario}/figures/`.
 
-**Prueba con redes simuladas.** `workflow/scripts/simulate_networks.R` (fuera del pipeline) genera las mismas 175 redes con una respuesta conocida, en `results/simulated/planted/` (con rewiring plantado) y `results/simulated/null/` (AD = CT). Las reglas de comparación leen las redes de la carpeta que indica `network_source` en el config:
+La prueba común de los análisis 4, 5 y 7 está en `workflow/scripts/R/de_utils.R` (`overlap_test`).
+
+Para correr solo una parte: `snakemake network_comparisons` (análisis 1–3 y 6) o `snakemake networks_vs_de` (análisis 4, 5 y 7).
+
+**Prueba con redes simuladas.** `workflow/scripts/simulate_networks.R` (fuera del pipeline) genera las mismas 175 redes con una respuesta conocida, en `results/simulated/planted/` (con cambios plantados) y `results/simulated/null/` (AD = CT). Las redes simuladas tienen 1500 genes por estudio, así que vienen con sus propias tablas de DE (`results/simulated/DE/`). Las reglas de los análisis 1–7 leen las redes de la carpeta que indica `network_source` en el config, y el DE de la carpeta que indica `de_source`:
 
 ```
-snakemake network_comparisons --config network_source=results/simulated/planted --sdm conda --cores 4
+snakemake network_comparisons networks_vs_de \
+    --config network_source=results/simulated/planted de_source=results/simulated/DE \
+    --sdm conda --cores 4
 ```
+
+Qué plantó la simulación en cada región y qué debe recuperar el pipeline (la lista de genes está en `truth_genes.tsv`):
+- **rewiring global** distinto por región, de mayor a menor TCX > DLPFC > ACC = PCC > CBE: el índice de rewiring debe seguir ese orden, y la predicción del análisis 6 debe cumplirse;
+- **10 genes DE arriba y 10 DE abajo** de los más DE pierden el 60% de sus enlaces y se conectan con genes DE de su misma dirección: el OR de recableados × DE del análisis 4 debe ser > 1;
+- **5 hubs ganados y 5 hubs perdidos**, elegidos sin relación con el DE: el análisis 5 debe encontrarlos como hubs ganados y perdidos, con OR × DE ≈ 1.
+
+En el escenario `null`, el índice debe ser ≈ 1 en todas las regiones, la predicción no debe cumplirse y ninguna prueba debe salir significativa.
 
 En las rutas de ARACNe:
 - `{design}` es `matched`, `equal_n` o `curve`;
@@ -467,7 +475,7 @@ Una red con 100 bootstraps tarda **~1 día**. Con ese valor, las 175 redes suman
 - **Región y cohorte se confunden entre estudios.** La comparación entre ROSMAP y Mayo mezcla la región con la cohorte, el protocolo y la calidad del RNA.
 - **Región y donantes no se separan por completo.** Dentro de cada estudio, las regiones comparten parte de los donantes, pero no todos. Una diferencia de rewiring entre dos regiones puede reflejar en parte que sus redes se hicieron con personas distintas.
 - **Composición celular.** Los datos son RNA-seq bulk. En AD se pierden neuronas y aumentan la astroglía y la microglía. Cuando la proporción de un tipo celular cambia entre personas, sus genes marcadores suben y bajan juntos y aparecen como co-expresados. Por eso, parte del rewiring entre AD y CT puede reflejar cambios en la composición del tejido y no en la regulación génica. La residualización de Sage no corrige este efecto. Separar ambas cosas requiere datos de célula única (single-cell o single-nucleus), que este estudio no usa.
-- **Poder del análisis 7.** La lista de genes de riesgo es corta, así que la prueba de enriquecimiento tiene poco poder.
+- **Poder del análisis 7.** La lista de genes de riesgo es corta (55 genes), así que la prueba tiene poco poder. Además, solo cubre los 42 loci nuevos de Bellenguez et al. (2022), no los 33 ya conocidos (ver "Datos").
 
 ## Referencias
 

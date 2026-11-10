@@ -109,9 +109,6 @@ scale_fill_age <- function(...) {
 scale_fill_apoe <- function(...) {
   scale_fill_manual(values = COL_APOE, name = "Alleles", drop = FALSE, ...)
 }
-scale_fill_region <- function(...) {
-  scale_fill_manual(values = COL_REGION, name = "Region", ...)
-}
 scale_x_dx <- function(...) scale_x_discrete(labels = DX_AXIS_LABELS, ...)
 
 # One column of panels per region, grouped by study
@@ -153,4 +150,24 @@ save_pub <- function(plot, file, width = "double", height = 120) {
     device = "jpeg", bg = "white", quality = 95
   )
   invisible(paste0(base, c(".pdf", ".jpeg")))
+}
+
+# Saves a whole figure and each of its panels in one folder:
+#   <dir>/figure<id>.pdf  and  <dir>/<id><letter>.pdf  (+ .jpeg), e.g.
+#   results/figures/figure1/figure1.pdf, 1a.pdf, 1b.pdf ...
+# `panels`: named list, names = panel letters (same order as in the figure).
+# `panel_width`, `panel_height`: one value for all panels, or a named vector
+# with one value per letter.
+save_figure <- function(figure, panels, dir, id, width = "double", height = 120,
+                        panel_width = "single", panel_height = 70) {
+  dir.create(dir, showWarnings = FALSE, recursive = TRUE)
+  save_pub(figure, file.path(dir, paste0("figure", id)), width = width, height = height)
+  size_of <- \(x, letter) if (length(x) > 1) x[[letter]] else x
+  for (letter in names(panels)) {
+    save_pub(
+      panels[[letter]], file.path(dir, paste0(id, letter)),
+      width = size_of(panel_width, letter), height = size_of(panel_height, letter)
+    )
+  }
+  message("Saved figure ", id, " and panels ", paste(names(panels), collapse = ", "), " in ", dir)
 }

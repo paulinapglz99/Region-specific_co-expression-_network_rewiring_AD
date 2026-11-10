@@ -5,6 +5,9 @@
 #   2. Rewiring index of each AD vs CT pair = J(AD, CT) / J_ref(n).
 #   3. Analysis 2: order of the regions by index in each equal_n replicate,
 #      compared with the order of the matched design (1 = most rewiring).
+#   4. Analysis 6, prediction registered on 2026-11-06: TCX more rewired than CBE.
+#      Holds if the mean index of TCX < that of CBE and the Wilcoxon test of
+#      their 10 matched replicates gives p < 0.05. Also reported with the direct J.
 
 library(dplyr)
 library(purrr)
@@ -98,6 +101,34 @@ message(
   " | mean Kendall tau: ", round(mean(region_order$kendall_tau), 3)
 )
 
+
+# ---- 4. Registered prediction (analysis 6) ---------------------------------
+
+more <- snakemake@params[["more_rewired"]] # TCX
+less <- snakemake@params[["less_rewired"]] # CBE
+max_p <- snakemake@params[["max_p"]]
+
+prediction <- c("index", "jaccard") |>
+  map(\(metric) {
+    x <- index[[metric]][index$design == "matched" & index$region == more]
+    y <- index[[metric]][index$design == "matched" & index$region == less]
+    test <- wilcox.test(x, y, exact = FALSE)
+    tibble(
+      metric = metric,
+      more_rewired = more, less_rewired = less,
+      mean_more = mean(x), mean_less = mean(y),
+      n_more = length(x), n_less = length(y),
+      wilcoxon_W = unname(test$statistic), p = test$p.value,
+      # Lower index (or J) = AD and CT less alike = more rewiring
+      holds = mean(x) < mean(y) & test$p.value < max_p
+    )
+  }) |>
+  list_rbind()
+
+message("\nRegistered prediction (", more, " more rewired than ", less, "):")
+print(mutate(prediction, across(where(is.double), \(v) signif(v, 3))), width = Inf)
+
 vroom_write(index, snakemake@output[["index"]])
 vroom_write(curve, snakemake@output[["curve"]])
 vroom_write(region_order, snakemake@output[["order"]])
+vroom_write(prediction, snakemake@output[["prediction"]])

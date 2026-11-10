@@ -157,7 +157,12 @@ fig <- (p_n | p_sex) / (p_age | p_apoe) / (p_rin | p_pmi) / p_overlap +
   plot_annotation(tag_levels = "a") &
   theme(plot.tag = element_text(size = PUB_TAG_SIZE, face = "bold"))
 
-save_pub(fig, snakemake@output[["pdf"]], width = "double", height = FIG_MAX_HEIGHT)
+save_figure(
+  fig, list(a = p_n, b = p_sex, c = p_age, d = p_apoe, e = p_rin, f = p_pmi, g = p_overlap),
+  dir = snakemake@output[["figure"]], id = "S1", height = FIG_MAX_HEIGHT,
+  panel_width = c(a = "single", b = "single", c = "single", d = "single", e = "single", f = "single", g = "double"),
+  panel_height = c(a = 55, b = 55, c = 55, d = 55, e = 55, f = 55, g = 65)
+)
 
 
 # ---- Table ------------------------------------------------------------------

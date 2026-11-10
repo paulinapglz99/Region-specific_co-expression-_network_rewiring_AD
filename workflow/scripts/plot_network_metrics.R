@@ -1,10 +1,13 @@
-# Figure of analyses 1-3: network comparisons between AD and CT.
-#   a. Edge Jaccard AD vs CT (matched n)
-#   b. Reference curve J_ref(n)
-#   c. Rewiring index (matched n)
-#   d. Rewiring index with n = 90 in every network (equal_n)
-#   e. Spearman rho of degree and NMI of communities (matched n)
-#   f. Mean degree of the AD and CT networks (matched n)
+# Figures of analyses 1-3 and 6: network comparisons between AD and CT.
+# Each figure goes to its own folder, with one file per panel (save_figure).
+# Figure 1:
+#   a. Reference curve J_ref(n)
+#   b. Rewiring index (matched n), with the registered prediction TCX vs CBE
+#   c. Spearman rho of degree and NMI of communities (matched n)
+#   d. Mean degree of the AD and CT networks (matched n)
+# Supplementary figure S3:
+#   a. Edge Jaccard AD vs CT (matched n), with the prediction on the direct J
+#   b. Rewiring index with n = 90 in every network (equal_n)
 
 library(dplyr)
 library(tidyr)
@@ -24,6 +27,7 @@ index <- vroom(snakemake@input[["index"]], col_types = cols(design = "c", region
   set_pub_levels()
 curve <- vroom(snakemake@input[["curve"]], col_types = cols(table = "c", group = "c", role = "c", replicate = "c", .default = "d"))
 region_order <- vroom(snakemake@input[["order"]], col_types = cols(replicate = "c", order = "c", reference_order = "c", same_order = "l", .default = "d"))
+prediction <- vroom(snakemake@input[["prediction"]], col_types = cols(metric = "c", more_rewired = "c", less_rewired = "c", holds = "l", .default = "d"))
 
 matched <- filter(index, design == "matched")
 equal_n <- filter(index, design == "equal_n")
@@ -53,10 +57,33 @@ replicate_points <- function(data, y) {
 }
 
 
+# Registered prediction (analysis 6): bracket between the two regions with the
+# Wilcoxon p, drawn above the highest replicate of `y`
+prediction_bracket <- function(data, y, metric) {
+  pred <- prediction[prediction$metric == metric, ]
+  top <- max(data[[y]][data$region %in% c(pred$more_rewired, pred$less_rewired)])
+  height <- top + 0.08 * diff(range(data[[y]]))
+  bracket <- tibble(
+    study = factor(study_of[[pred$more_rewired]], levels = STUDY_ORDER),
+    x = pred$more_rewired, xend = pred$less_rewired, y = height,
+    label = sprintf("Registered: %s > %s\nWilcoxon p = %.2g", pred$more_rewired, pred$less_rewired, pred$p)
+  )
+  list(
+    geom_segment(data = bracket, aes(x = x, xend = xend, y = y, yend = y), linewidth = PUB_LINE_WIDTH, inherit.aes = FALSE),
+    geom_text(
+      data = bracket, aes(x = 1.5, y = y, label = label), vjust = -0.3,
+      size = PUB_LABEL_SIZE, lineheight = 0.9, inherit.aes = FALSE
+    ),
+    scale_y_continuous(expand = expansion(mult = c(0.05, 0.3)))
+  )
+}
+
+
 # ---- Panels ----------------------------------------------------------------------
 
 p_jaccard <- ggplot() +
   replicate_points(matched, jaccard) +
+  prediction_bracket(matched, "jaccard", "jaccard") +
   labs(title = "AD vs CT, same n", y = "Edge Jaccard (J)") +
   theme_pub()
 
@@ -93,6 +120,7 @@ p_curve <- ggplot(curve, aes(x = n, y = jaccard)) +
 p_index <- ggplot() +
   geom_hline(yintercept = 1, linetype = "dashed", linewidth = PUB_LINE_WIDTH, colour = COL_NEUTRAL) +
   replicate_points(matched, index) +
+  prediction_bracket(matched, "index", "index") +
   labs(title = "Rewiring index, same n", y = expression(J(AD, CT) / J[ref](n))) +
   theme_pub()
 
@@ -103,7 +131,7 @@ p_equal_n <- ggplot() +
   labs(
     title = "Rewiring index, n = 90 in every network",
     subtitle = sprintf(
-      "Same region order as in c: %d of %d replicates (mean Kendall τ = %.2f)",
+      "Same region order as with matched n: %d of %d replicates (mean Kendall τ = %.2f)",
       same, nrow(region_order), mean(region_order$kendall_tau)
     ),
     y = expression(J(AD, CT) / J[ref](90))
@@ -139,8 +167,16 @@ p_degree <- ggplot(degree_long, aes(x = region, y = mean_degree, colour = dx)) +
 
 # ---- Figure ---------------------------------------------------------------------
 
-figure <- (p_jaccard | p_curve) / (p_index | p_equal_n) / (p_structure | p_degree) +
+figure <- (p_curve | p_index) / (p_structure | p_degree) +
   plot_annotation(tag_levels = "a")
+save_figure(
+  figure, list(a = p_curve, b = p_index, c = p_structure, d = p_degree),
+  dir = snakemake@output[["figure"]], id = "1", height = 130
+)
 
-save_pub(figure, snakemake@output[["pdf"]], width = "double", height = 190)
-message("Saved ", snakemake@output[["pdf"]])
+supplementary <- (p_jaccard | p_equal_n) +
+  plot_annotation(tag_levels = "a")
+save_figure(
+  supplementary, list(a = p_jaccard, b = p_equal_n),
+  dir = snakemake@output[["supplementary"]], id = "S3", height = 70
+)

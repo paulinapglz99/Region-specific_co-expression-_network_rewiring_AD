@@ -69,13 +69,23 @@ COMPARED_TABLES = (
 )
 NETWORK_METRICS = [f"{NET}/metrics/{t}.tsv" for t in COMPARED_TABLES]
 
+# Networks of the matched design (analysis 1), read by analyses 4, 5 and 7
+NET_MATCHED = [
+    f.replace("results/aracne", f"{NET}/aracne", 1) for f in NETWORKS_MATCHED
+]
+
+# Sage's DE tables (or the simulated ones, see de_source in config/config.yaml)
+DE_FILES = expand(
+    "{de}/{study}_Differential_Expression_(diagnosis).tsv",
+    de=config["de_source"],
+    study=STUDIES,
+)
+
 
 wildcard_constraints:
     region="|".join(REGIONS),
-    region_a="|".join(REGIONS),
-    region_b="|".join(REGIONS),
     dx="|".join(config["diagnoses"]),
-    design="matched|equal_n|curve|paired",
+    design="matched|equal_n|curve",
     table=r"[^/]+",
     network=r"[^/]+",
     seed=r"\d+",
@@ -90,11 +100,13 @@ rule all:
             category=FILES["category"],
             filename=FILES["filename"],
         ),
-        "results/demographics/demographics.pdf",
+        "results/figures/figureS1",
         NETWORKS_MATCHED,
         NETWORKS_CURVE,
         NETWORKS_EQUAL_N,
-        f"{NET}/metrics/network_metrics.pdf",
+        f"{NET}/figures/figure1",
+        f"{NET}/figures/figure2",
+        f"{NET}/genes/risk_genes_tests.tsv",
 
 
 # Run one design at a time, e.g.: snakemake networks_matched --sdm conda --cores 4
@@ -113,10 +125,17 @@ rule networks_equal_n:
         NETWORKS_EQUAL_N,
 
 
-# Comparisons between networks and their figure (analyses 1-3)
+# Comparisons between networks and their figure (analyses 1-3 and 6)
 rule network_comparisons:
     input:
-        f"{NET}/metrics/network_metrics.pdf",
+        f"{NET}/figures/figure1",
+
+
+# Networks vs DE and risk genes, and their figure (analyses 4, 5 and 7)
+rule networks_vs_de:
+    input:
+        f"{NET}/figures/figure2",
+        f"{NET}/genes/risk_genes_tests.tsv",
 
 
 # Files of the study a region comes from
@@ -176,7 +195,7 @@ rule split_expression:
         "scripts/split_expression.R"
 
 
-# Demographics per region x diagnosis (figure + table)
+# Demographics per region x diagnosis: Figure S1 (figure + one file per panel) and table
 rule plot_demographics:
     input:
         metadata=expand(
@@ -185,8 +204,7 @@ rule plot_demographics:
         ),
         theme="workflow/scripts/R/theme_pub.R",
     output:
-        pdf="results/demographics/demographics.pdf",
-        jpeg="results/demographics/demographics.jpeg",
+        figure=directory("results/figures/figureS1"),
         table="results/demographics/demographics_table.tsv",
     log:
         "logs/plot_demographics.log",
@@ -261,27 +279,6 @@ rule subsample_curve:
         "scripts/subsample_curve.R"
 
 
-# Paired (not in the current design): only donors with both regions, same donors in both networks
-rule subsample_paired:
-    input:
-        a_ad="results/samples/{region_a}_AD.tsv",
-        a_ct="results/samples/{region_a}_CT.tsv",
-        b_ad="results/samples/{region_b}_AD.tsv",
-        b_ct="results/samples/{region_b}_CT.tsv",
-        utils="workflow/scripts/R/subsample_utils.R",
-    output:
-        "results/subsamples/paired/{region_a}-{region_b}.tsv",
-    log:
-        "logs/subsample_paired/{region_a}-{region_b}.log",
-    conda:
-        "envs/data_wr.yaml"
-    params:
-        replicates=SUB["replicates"]["paired"],
-        seed=SUB["seed"],
-    script:
-        "scripts/subsample_paired.R"
-
-
 # ---- Networks with ARACNe-AP ------------------------------------------------
 
 
@@ -340,7 +337,8 @@ rule aracne_threshold:
     input:
         matrix="results/aracne/{design}/{table}/{network}/matrix.tsv",
         regulators="results/aracne/{design}/{table}/{network}/regulators.txt",
-        jar=config["aracne"]["jar"],
+        # ancient(): rebuilding the jar must not make the networks rerun
+        jar=ancient(config["aracne"]["jar"]),
     output:
         directory("results/aracne/{design}/{table}/{network}/threshold"),
     log:
@@ -367,7 +365,8 @@ rule aracne_bootstrap:
         matrix="results/aracne/{design}/{table}/{network}/matrix.tsv",
         regulators="results/aracne/{design}/{table}/{network}/regulators.txt",
         threshold="results/aracne/{design}/{table}/{network}/threshold",
-        jar=config["aracne"]["jar"],
+        # ancient(): rebuilding the jar must not make the networks rerun
+        jar=ancient(config["aracne"]["jar"]),
     output:
         # ARACNe's working folder for this seed. After the mv it only holds a copy of
         # the threshold file, so temp() lets Snakemake delete it when the job ends
@@ -414,7 +413,8 @@ rule aracne_consolidate:
             "results/aracne/{{design}}/{{table}}/{{network}}/bootstrap_networks/bootstrapNetwork_seed{seed}.txt",
             seed=range(1, config["aracne"]["bootstrap"]["n_boot"] + 1),
         ),
-        jar=config["aracne"]["jar"],
+        # ancient(): rebuilding the jar must not make the networks rerun
+        jar=ancient(config["aracne"]["jar"]),
     output:
         # ARACNe writes network.txt inside the folder it consolidates.
         # temp(): it is an identical copy of the final network below
@@ -470,7 +470,8 @@ rule network_metrics:
         "scripts/network_metrics.R"
 
 
-# Reference curve J_ref(n), rewiring index and region order of the equal_n design
+# Reference curve J_ref(n), rewiring index, region order of the equal_n design
+# and the registered prediction (analysis 6)
 rule rewiring_index:
     input:
         metrics=NETWORK_METRICS,
@@ -478,6 +479,7 @@ rule rewiring_index:
         index=f"{NET}/metrics/rewiring_index.tsv",
         curve=f"{NET}/metrics/reference_curve.tsv",
         order=f"{NET}/metrics/region_order.tsv",
+        prediction=f"{NET}/metrics/prediction.tsv",
     log:
         f"{NET}/metrics/logs/rewiring_index.log",
     conda:
@@ -486,19 +488,25 @@ rule rewiring_index:
         # Calibration group of the curve = its first entry, e.g. DLPFC_AD
         calibration=f"{SUB['curve'][0]['region']}_{SUB['curve'][0]['dx']}",
         equal_n_regions=SUB["equal_n"]["regions"],
+        more_rewired=config["prediction"]["more_rewired"],
+        less_rewired=config["prediction"]["less_rewired"],
+        max_p=config["prediction"]["max_p"],
     script:
         "scripts/rewiring_index.R"
 
 
+# Figure 1 and Figure S3 (analyses 1-3 and 6). One folder per figure, with the
+# whole figure and one file per panel: {NET}/figures/figure1/figure1.pdf, 1a.pdf...
 rule plot_network_metrics:
     input:
         index=f"{NET}/metrics/rewiring_index.tsv",
         curve=f"{NET}/metrics/reference_curve.tsv",
         order=f"{NET}/metrics/region_order.tsv",
+        prediction=f"{NET}/metrics/prediction.tsv",
         theme="workflow/scripts/R/theme_pub.R",
     output:
-        pdf=f"{NET}/metrics/network_metrics.pdf",
-        jpeg=f"{NET}/metrics/network_metrics.jpeg",
+        figure=directory(f"{NET}/figures/figure1"),
+        supplementary=directory(f"{NET}/figures/figureS3"),
     log:
         f"{NET}/metrics/logs/plot_network_metrics.log",
     conda:
@@ -507,3 +515,150 @@ rule plot_network_metrics:
         study_of=STUDY_OF,
     script:
         "scripts/plot_network_metrics.R"
+
+
+# ---- Networks vs DE and risk genes (analyses 4, 5 and 7) ---------------------
+# Inputs: the matched networks (analysis 1) and the DE tables.
+# Outputs in {NET}/genes/
+
+
+# Analysis 4, step 1: neighbor change of each gene, AD_repk vs CT_all
+rule gene_rewiring:
+    input:
+        networks=lambda w: [f for f in NET_MATCHED if f"/matched/{w.region}/" in f],
+        de=lambda w: f"{config['de_source']}/{STUDY_OF[w.region]}_Differential_Expression_(diagnosis).tsv",
+        network_utils="workflow/scripts/R/network_utils.R",
+        de_utils="workflow/scripts/R/de_utils.R",
+    output:
+        genes=f"{NET}/genes/rewiring/{{region}}.tsv",
+        replicates=f"{NET}/genes/rewiring/{{region}}_replicates.tsv",
+    log:
+        f"{NET}/genes/logs/gene_rewiring_{{region}}.log",
+    conda:
+        "envs/network_analysis.yaml"
+    params:
+        adj_p=config["de"]["adj_pvalue"],
+        fold_change=config["de"]["fold_change"],
+    script:
+        "scripts/gene_rewiring.R"
+
+
+# Analysis 4: rewired genes x DE, four groups of genes, sensitivity and stability
+rule rewiring_vs_de:
+    input:
+        genes=expand(f"{NET}/genes/rewiring/{{region}}.tsv", region=REGIONS),
+        replicates=expand(
+            f"{NET}/genes/rewiring/{{region}}_replicates.tsv", region=REGIONS
+        ),
+        de_utils="workflow/scripts/R/de_utils.R",
+    output:
+        genes=f"{NET}/genes/rewiring_genes.tsv",
+        tests=f"{NET}/genes/rewiring_tests.tsv",
+        replicates=f"{NET}/genes/rewiring_replicates.tsv",
+        robust=f"{NET}/genes/rewiring_robust.tsv",
+    log:
+        f"{NET}/genes/logs/rewiring_vs_de.log",
+    conda:
+        "envs/data_wr.yaml"
+    params:
+        min_degree=config["de"]["min_degree"],
+        top_rewired=config["de"]["top_rewired"],
+        sensitivity=config["de"]["top_rewired_sensitivity"],
+        min_replicates=config["de"]["min_replicates"],
+        n_perm=config["permutation"]["n"],
+        strata=config["permutation"]["strata"],
+        seed=config["permutation"]["seed"],
+    script:
+        "scripts/rewiring_vs_de.R"
+
+
+# Analysis 4: GO enrichment of the "rewired only" genes of each region
+rule go_rewired:
+    input:
+        genes=f"{NET}/genes/rewiring_genes.tsv",
+    output:
+        f"{NET}/genes/rewiring_go.tsv",
+    log:
+        f"{NET}/genes/logs/go_rewired.log",
+    conda:
+        "envs/enrichment.yaml"
+    params:
+        ontology=config["go"]["ontology"],
+        min_size=config["go"]["min_size"],
+        max_size=config["go"]["max_size"],
+        max_adj_p=config["go"]["adj_pvalue"],
+    script:
+        "scripts/go_rewired.R"
+
+
+# Analysis 5: shared, gained and lost hubs, and hub type x DE
+rule hubs:
+    input:
+        networks=NET_MATCHED,
+        de=DE_FILES,
+        network_utils="workflow/scripts/R/network_utils.R",
+        de_utils="workflow/scripts/R/de_utils.R",
+    output:
+        genes=f"{NET}/genes/hubs_genes.tsv",
+        tests=f"{NET}/genes/hubs_tests.tsv",
+    log:
+        f"{NET}/genes/logs/hubs.log",
+    conda:
+        "envs/network_analysis.yaml"
+    params:
+        study_of=STUDY_OF,
+        adj_p=config["de"]["adj_pvalue"],
+        fold_change=config["de"]["fold_change"],
+        top_pagerank=config["hubs"]["top_pagerank"],
+        min_replicates=config["hubs"]["min_replicates"],
+        max_replicates_lost=config["hubs"]["max_replicates_lost"],
+        n_perm=config["permutation"]["n"],
+        strata=config["permutation"]["strata"],
+        seed=config["permutation"]["seed"],
+    script:
+        "scripts/hubs.R"
+
+
+# Analysis 7: AD risk genes among the rewired genes and the gained and lost hubs
+rule risk_genes:
+    input:
+        risk=config["risk_genes"],
+        rewiring=f"{NET}/genes/rewiring_genes.tsv",
+        hubs=f"{NET}/genes/hubs_genes.tsv",
+        de_utils="workflow/scripts/R/de_utils.R",
+    output:
+        tests=f"{NET}/genes/risk_genes_tests.tsv",
+        table=f"{NET}/genes/risk_genes_table.tsv",
+    log:
+        f"{NET}/genes/logs/risk_genes.log",
+    conda:
+        "envs/data_wr.yaml"
+    params:
+        n_perm=config["permutation"]["n"],
+        strata=config["permutation"]["strata"],
+        seed=config["permutation"]["seed"],
+    script:
+        "scripts/risk_genes.R"
+
+
+# Figure 2 (analyses 4 and 5) and Figure S4 (robustness of analysis 4):
+# whole figure and one file per panel
+rule plot_networks_de:
+    input:
+        rewiring_tests=f"{NET}/genes/rewiring_tests.tsv",
+        rewiring_replicates=f"{NET}/genes/rewiring_replicates.tsv",
+        go=f"{NET}/genes/rewiring_go.tsv",
+        hubs_tests=f"{NET}/genes/hubs_tests.tsv",
+        theme="workflow/scripts/R/theme_pub.R",
+    output:
+        figure=directory(f"{NET}/figures/figure2"),
+        supplementary=directory(f"{NET}/figures/figureS4"),
+    log:
+        f"{NET}/genes/logs/plot_networks_de.log",
+    conda:
+        "envs/plots_r.yaml"
+    params:
+        study_of=STUDY_OF,
+        max_adj_p=config["go"]["adj_pvalue"],
+    script:
+        "scripts/plot_networks_de.R"

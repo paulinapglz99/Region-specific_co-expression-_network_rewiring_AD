@@ -16,10 +16,6 @@ sink(log_file, type = "message")
 net <- snakemake@wildcards[["network"]]
 subsamples <- vroom(snakemake@input[["subsamples"]])
 
-if ("region" %in% names(subsamples)) {
-  stop("Paired tables (with a 'region' column) are not supported yet")
-}
-
 samples <- subsamples |>
   filter(network == net) |>
   pull(specimenID)

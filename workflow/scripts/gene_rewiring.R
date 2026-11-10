@@ -1,6 +1,5 @@
 # Analysis 4, step 1: rewiring of each gene, AD_repk vs CT_all, in one region.
 #   neighbor_change = 1 - Jaccard of its neighbors in AD and in CT
-#   degree_change   = log2((degree AD + 1) / (degree CT + 1))
 # Universe: every gene of the DE table of the region (degree 0 if absent from a network).
 # Outputs: one row per gene and replicate, and one row per gene (mean over replicates).
 
@@ -38,7 +37,6 @@ rewiring_one <- function(edges, network) {
       replicate = sub("^AD_", "", network),
       union = degree_ad + degree_ct - shared,
       neighbor_change = if_else(union > 0, 1 - shared / union, NA_real_),
-      degree_change = log2((degree_ad + 1) / (degree_ct + 1)),
       .before = 1
     )
 }
@@ -51,8 +49,7 @@ genes <- replicates |>
   summarise(
     degree_ct = first(degree_ct),
     degree_ad = mean(degree_ad),
-    neighbor_change = mean(neighbor_change, na.rm = TRUE),
-    degree_change = mean(degree_change)
+    neighbor_change = mean(neighbor_change, na.rm = TRUE)
   ) |>
   mutate(neighbor_change = if_else(is.nan(neighbor_change), NA_real_, neighbor_change)) |>
   left_join(de, by = "gene")
