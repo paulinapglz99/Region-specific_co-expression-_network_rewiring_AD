@@ -133,7 +133,7 @@ figure <- (p_groups | p_go) / p_hubs +
 
 save_figure(
   figure, list(a = p_groups, b = p_go, c = p_hubs),
-  dir = snakemake@output[["figure"]], id = "2", height = 150,
+  dir = dirname(snakemake@output[["figure"]]), id = "2", height = 150,
   panel_width = c(a = "single", b = "single", c = "double"),
   panel_height = c(a = 85, b = 85, c = 70)
 )
@@ -184,5 +184,5 @@ supplementary <- (p_thresholds | p_replicates) +
   plot_annotation(tag_levels = "a")
 save_figure(
   supplementary, list(a = p_thresholds, b = p_replicates),
-  dir = snakemake@output[["supplementary"]], id = "S4", height = 75
+  dir = dirname(snakemake@output[["supplementary"]]), id = "S4", height = 75
 )

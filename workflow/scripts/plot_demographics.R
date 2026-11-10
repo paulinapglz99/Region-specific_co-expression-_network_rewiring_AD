@@ -159,7 +159,7 @@ fig <- (p_n | p_sex) / (p_age | p_apoe) / (p_rin | p_pmi) / p_overlap +
 
 save_figure(
   fig, list(a = p_n, b = p_sex, c = p_age, d = p_apoe, e = p_rin, f = p_pmi, g = p_overlap),
-  dir = snakemake@output[["figure"]], id = "S1", height = FIG_MAX_HEIGHT,
+  dir = dirname(snakemake@output[["figure"]]), id = "S1", height = FIG_MAX_HEIGHT,
   panel_width = c(a = "single", b = "single", c = "single", d = "single", e = "single", f = "single", g = "double"),
   panel_height = c(a = 55, b = 55, c = 55, d = 55, e = 55, f = 55, g = 65)
 )

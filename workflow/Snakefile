@@ -100,12 +100,12 @@ rule all:
             category=FILES["category"],
             filename=FILES["filename"],
         ),
-        "results/figures/figureS1",
+        "results/figures/figureS1/figureS1.pdf",
         NETWORKS_MATCHED,
         NETWORKS_CURVE,
         NETWORKS_EQUAL_N,
-        f"{NET}/figures/figure1",
-        f"{NET}/figures/figure2",
+        f"{NET}/figures/figure1/figure1.pdf",
+        f"{NET}/figures/figure2/figure2.pdf",
         f"{NET}/genes/risk_genes_tests.tsv",
 
 
@@ -128,13 +128,13 @@ rule networks_equal_n:
 # Comparisons between networks and their figure (analyses 1-3 and 6)
 rule network_comparisons:
     input:
-        f"{NET}/figures/figure1",
+        f"{NET}/figures/figure1/figure1.pdf",
 
 
 # Networks vs DE and risk genes, and their figure (analyses 4, 5 and 7)
 rule networks_vs_de:
     input:
-        f"{NET}/figures/figure2",
+        f"{NET}/figures/figure2/figure2.pdf",
         f"{NET}/genes/risk_genes_tests.tsv",
 
 
@@ -204,7 +204,9 @@ rule plot_demographics:
         ),
         theme="workflow/scripts/R/theme_pub.R",
     output:
-        figure=directory("results/figures/figureS1"),
+        # Only the whole figure is declared, never the folder: Snakemake empties
+        # declared folders, and figure folders can hold panels made by hand
+        figure="results/figures/figureS1/figureS1.pdf",
         table="results/demographics/demographics_table.tsv",
     log:
         "logs/plot_demographics.log",
@@ -496,7 +498,9 @@ rule rewiring_index:
 
 
 # Figure 1 and Figure S3 (analyses 1-3 and 6). One folder per figure, with the
-# whole figure and one file per panel: {NET}/figures/figure1/figure1.pdf, 1a.pdf...
+# whole figure and one file per panel: {NET}/figures/figure1/figure1.pdf, 1b.pdf...
+# Panel 1a is made by hand and saved in the same folder: never declare the
+# folder as output, or Snakemake would delete it
 rule plot_network_metrics:
     input:
         index=f"{NET}/metrics/rewiring_index.tsv",
@@ -505,8 +509,8 @@ rule plot_network_metrics:
         prediction=f"{NET}/metrics/prediction.tsv",
         theme="workflow/scripts/R/theme_pub.R",
     output:
-        figure=directory(f"{NET}/figures/figure1"),
-        supplementary=directory(f"{NET}/figures/figureS3"),
+        figure=f"{NET}/figures/figure1/figure1.pdf",
+        supplementary=f"{NET}/figures/figureS3/figureS3.pdf",
     log:
         f"{NET}/metrics/logs/plot_network_metrics.log",
     conda:
@@ -651,8 +655,8 @@ rule plot_networks_de:
         hubs_tests=f"{NET}/genes/hubs_tests.tsv",
         theme="workflow/scripts/R/theme_pub.R",
     output:
-        figure=directory(f"{NET}/figures/figure2"),
-        supplementary=directory(f"{NET}/figures/figureS4"),
+        figure=f"{NET}/figures/figure2/figure2.pdf",
+        supplementary=f"{NET}/figures/figureS4/figureS4.pdf",
     log:
         f"{NET}/genes/logs/plot_networks_de.log",
     conda:

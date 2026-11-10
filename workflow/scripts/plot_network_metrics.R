@@ -1,10 +1,12 @@
 # Figures of analyses 1-3 and 6: network comparisons between AD and CT.
 # Each figure goes to its own folder, with one file per panel (save_figure).
 # Figure 1:
-#   a. Reference curve J_ref(n)
-#   b. Rewiring index (matched n), with the registered prediction TCX vs CBE
-#   c. Spearman rho of degree and NMI of communities (matched n)
-#   d. Mean degree of the AD and CT networks (matched n)
+#   a. Schematic made by hand (figure1/1a.pdf): not made here. The whole
+#      figure leaves an empty slot for it
+#   b. Reference curve J_ref(n)
+#   c. Rewiring index (matched n), with the registered prediction TCX vs CBE
+#   d. Spearman rho of degree and NMI of communities (matched n)
+#   e. Mean degree of the AD and CT networks (matched n)
 # Supplementary figure S3:
 #   a. Edge Jaccard AD vs CT (matched n), with the prediction on the direct J
 #   b. Rewiring index with n = 90 in every network (equal_n)
@@ -167,16 +169,26 @@ p_degree <- ggplot(degree_long, aes(x = region, y = mean_degree, colour = dx)) +
 
 # ---- Figure ---------------------------------------------------------------------
 
-figure <- (p_curve | p_index) / (p_structure | p_degree) +
-  plot_annotation(tag_levels = "a")
+# Empty slot for panel a (hand-made schematic, figure1/1a.pdf)
+p_schematic <- ggplot() +
+  annotate("rect", xmin = 0, xmax = 1, ymin = 0, ymax = 1, fill = NA, colour = COL_NEUTRAL, linetype = "dashed") +
+  annotate("text", x = 0.5, y = 0.5, label = "Panel a: hand-made schematic\n(figure1/1a.pdf)", size = PUB_LABEL_SIZE, colour = INK_SECONDARY) +
+  theme_void(base_size = PUB_BASE_SIZE)
+
+# Rows: schematic | reference curve; rewiring index (main panel, full width);
+# structure | density
+figure <- (p_schematic | p_curve) / p_index / (p_structure | p_degree) +
+  plot_layout(heights = c(1, 0.9, 1)) +
+  plot_annotation(tag_levels = "a") &
+  theme(plot.tag = element_text(size = PUB_TAG_SIZE, face = "bold"))
 save_figure(
-  figure, list(a = p_curve, b = p_index, c = p_structure, d = p_degree),
-  dir = snakemake@output[["figure"]], id = "1", height = 130
+  figure, list(b = p_curve, c = p_index, d = p_structure, e = p_degree),
+  dir = dirname(snakemake@output[["figure"]]), id = "1", height = 200
 )
 
 supplementary <- (p_jaccard | p_equal_n) +
   plot_annotation(tag_levels = "a")
 save_figure(
   supplementary, list(a = p_jaccard, b = p_equal_n),
-  dir = snakemake@output[["supplementary"]], id = "S3", height = 70
+  dir = dirname(snakemake@output[["supplementary"]]), id = "S3", height = 70
 )
