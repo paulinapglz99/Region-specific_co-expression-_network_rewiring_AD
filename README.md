@@ -19,7 +19,23 @@ The full design is in [`docs/experimental_design.md`](docs/experimental_design.m
 
 ## Run
 
-`N` = cores, `M` = RAM in GB the jobs may use. Each ARACNe-AP bootstrap takes 4 threads and 16 GB, so at most min(N/4, M/16) run at the same time.
+### Configuration (`config/config.yaml`)
+
+Nothing has to change to run on the real data: `network_source: results` and `de_source: resources/DE` already point to it.
+
+Only the resources of the ARACNe-AP jobs may need adjusting to the machine:
+
+| Key | Default | Change it if |
+|---|---|---|
+| `aracne.bootstrap.threads` | 4 | you want fewer, larger bootstrap jobs |
+| `aracne.memory.bootstrap_gb` | 16 | a bootstrap fails with `OutOfMemoryError` (see its log) |
+| `aracne.memory.threshold_gb`, `consolidate_gb` | 8 | the same, for those steps |
+
+Do not change the rest: it is the study design (the `prediction` block was registered before inferring any network, and the seeds make the subsamples reproducible). The memory and thread keys are only computing resources: changing them does not rerun finished networks.
+
+### Steps
+
+`N` = cores, `M` = RAM in GB the jobs may use. Each ARACNe-AP bootstrap takes `aracne.bootstrap.threads` cores and `aracne.memory.bootstrap_gb` GB (4 and 16 by default), so at most min(N/4, M/16) run at the same time.
 
 1. Open a session that survives a disconnection, activate the environment and set the token:
    ```
