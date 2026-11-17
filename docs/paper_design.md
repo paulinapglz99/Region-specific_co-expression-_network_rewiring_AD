@@ -163,11 +163,11 @@ Se genera con la regla `plot_networks_de`, en `results/figures/figureS4/`.
 
 ## Decisiones pendientes
 
-1. **Enfoque:** biología primero, con el marco metodológico como apoyo (propuesta), o metodología primero.
-2. **Revista objetivo:** define el número de figuras, el tamaño de los paneles y cuánto va al suplemento.
+1. **Revista objetivo:** define el número de figuras, el tamaño de los paneles y cuánto va al suplemento.
 
 ## Decisiones tomadas
 
+- **Enfoque:** biología primero, con el marco metodológico como apoyo.
 - **Enriquecimiento funcional:** GO Biological Process (`config/config.yaml`, `go`).
 - **Genes de riesgo:** solo los 55 genes de los 42 loci nuevos de Bellenguez et al. (2022); los 33 loci ya conocidos no se incluyen.
 - **Red consenso:** se quitó del diseño, porque ningún análisis la usa.

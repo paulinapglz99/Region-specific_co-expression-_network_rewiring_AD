@@ -17,10 +17,42 @@ The full design is in [`docs/experimental_design.md`](docs/experimental_design.m
   Every rule has its own conda environment (`workflow/envs/`), created by Snakemake.
 - A [Synapse](https://www.synapse.org) account with access to the AMP-AD RNA-seq Harmonization Study (`syn26720676`), and a personal access token in the `SYNAPSE_AUTH_TOKEN` environment variable.
 
-Run:
-```
-snakemake --sdm conda --cores N
-```
+## Run
+
+`N` = cores, `M` = RAM in GB the jobs may use. Each ARACNe-AP bootstrap takes 4 threads and 16 GB, so at most min(N/4, M/16) run at the same time.
+
+1. Open a session that survives a disconnection, activate the environment and set the token:
+   ```
+   tmux new -s ad                 # back later: tmux attach -t ad
+   conda activate ad-networks-smk
+   read -s SYNAPSE_AUTH_TOKEN && export SYNAPSE_AUTH_TOKEN
+   ```
+2. Create all the conda environments:
+   ```
+   snakemake --sdm conda --conda-create-envs-only --cores 1
+   ```
+3. Check what will run (dry-run):
+   ```
+   snakemake networks_matched networks_curve --sdm conda -n
+   ```
+4. Matched and reference-curve networks (the long step):
+   ```
+   snakemake networks_matched networks_curve --sdm conda --cores N --resources mem_gb=M --keep-going --rerun-incomplete
+   ```
+5. Figure 2 and risk genes (they need only the matched networks):
+   ```
+   snakemake networks_vs_de --sdm conda --cores N
+   ```
+6. Equal-n networks:
+   ```
+   snakemake networks_equal_n --sdm conda --cores N --resources mem_gb=M --keep-going --rerun-incomplete
+   ```
+7. Everything else (Figures 1, S1, S3 and S4):
+   ```
+   snakemake --sdm conda --cores N
+   ```
+
+If a run is interrupted, run `snakemake --unlock` and repeat the same command: Snakemake resumes where it stopped. Logs are in `logs/` and `results/**/logs/`.
 
 ## Pipeline
 
