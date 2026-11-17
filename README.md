@@ -4,7 +4,7 @@
 
 Measure how Alzheimer's disease (AD) changes gene co-expression networks in five brain regions (DLPFC, ACC, PCC, TCX and CBE), in a way that is comparable between regions, and relate those changes to differential expression and to known AD biology.
 
-The full design is in [`docs/experimental_design.md`](docs/experimental_design.md) (in Spanish).
+The full design is in [`docs/experimental_design.md`](docs/experimental_design.md).
 
 ## Requirements
 
@@ -16,7 +16,6 @@ The full design is in [`docs/experimental_design.md`](docs/experimental_design.m
   ```
   Every rule has its own conda environment (`workflow/envs/`), created by Snakemake.
 - A [Synapse](https://www.synapse.org) account with access to the AMP-AD RNA-seq Harmonization Study (`syn26720676`), and a personal access token in the `SYNAPSE_AUTH_TOKEN` environment variable.
-- Compute: one ARACNe-AP network takes about one day, and the design has 175 networks.
 
 Run:
 ```
@@ -28,6 +27,8 @@ snakemake --sdm conda --cores N
 ![Rule graph of the pipeline](docs/figures/pipeline_rulegraph.png)
 
 Grey: data and subsampling. Dark blue: ARACNe-AP networks. Light blue: rewiring between AD and CT (analyses 1–3 and 6). Green: networks vs differential expression and AD risk genes (analyses 4, 5 and 7). The analyses are summarized in [`docs/analisis.md`](docs/analisis.md).
+
+To redraw the graph after changing the pipeline: `python workflow/scripts/pipeline_rulegraph.py` (needs Graphviz).
 
 ## Repository structure
 
