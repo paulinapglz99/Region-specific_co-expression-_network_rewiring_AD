@@ -1,8 +1,8 @@
 # Figures of analyses 1-3 and 6: network comparisons between AD and CT.
 # Each figure goes to its own folder, with one file per panel (save_figure).
 # Figure 1:
-#   a. Schematic made by hand (figure1/1a.pdf): not made here. The whole
-#      figure leaves an empty slot for it
+#   a. Schematic made by hand (docs/figures/figure1a.pdf): not made here, it
+#      is inserted as an image and copied to the figure folder as 1a.pdf
 #   b. Reference curve J_ref(n)
 #   c. Rewiring index (matched n), with the registered prediction TCX vs CBE
 #   d. Spearman rho of degree and NMI of communities (matched n)
@@ -169,11 +169,19 @@ p_degree <- ggplot(degree_long, aes(x = region, y = mean_degree, colour = dx)) +
 
 # ---- Figure ---------------------------------------------------------------------
 
-# Empty slot for panel a (hand-made schematic, figure1/1a.pdf)
-p_schematic <- ggplot() +
-  annotate("rect", xmin = 0, xmax = 1, ymin = 0, ymax = 1, fill = NA, colour = COL_NEUTRAL, linetype = "dashed") +
-  annotate("text", x = 0.5, y = 0.5, label = "Panel a: hand-made schematic\n(figure1/1a.pdf)", size = PUB_LABEL_SIZE, colour = INK_SECONDARY) +
-  theme_void(base_size = PUB_BASE_SIZE)
+# Panel a: the hand-made schematic (docs/figures/figure1a.pdf), first page,
+# drawn as an image that keeps its aspect ratio. Rendered at FIG_DPI for the
+# size it takes in the figure (half the page width), not for the size of the
+# original page, which can be large (a big page at 600 dpi takes gigabytes).
+# A copy goes to the figure folder as 1a.pdf, so the folder has every panel
+schematic_file <- snakemake@input[["schematic"]]
+page_width_in <- pdftools::pdf_pagesize(schematic_file)$width[[1]] / 72 # points -> inches
+panel_width_in <- FIG_WIDTH[["double"]] / 2 / 25.4 # mm -> inches
+render_dpi <- FIG_DPI * panel_width_in / page_width_in
+schematic <- pdftools::pdf_render_page(schematic_file, page = 1, dpi = render_dpi, numeric = TRUE)
+p_schematic <- wrap_elements(full = grid::rasterGrob(schematic, interpolate = TRUE))
+dir.create(dirname(snakemake@output[["figure"]]), showWarnings = FALSE, recursive = TRUE)
+invisible(file.copy(schematic_file, file.path(dirname(snakemake@output[["figure"]]), "1a.pdf"), overwrite = TRUE))
 
 # Rows: schematic | reference curve; rewiring index (main panel, full width);
 # structure | density

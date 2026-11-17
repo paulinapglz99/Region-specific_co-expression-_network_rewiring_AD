@@ -507,6 +507,8 @@ rule plot_network_metrics:
         curve=f"{NET}/metrics/reference_curve.tsv",
         order=f"{NET}/metrics/region_order.tsv",
         prediction=f"{NET}/metrics/prediction.tsv",
+        # Panel 1a, made by hand. Edit this file: the figure is rebuilt from it
+        schematic="docs/figures/figure1a.pdf",
         theme="workflow/scripts/R/theme_pub.R",
     output:
         figure=f"{NET}/figures/figure1/figure1.pdf",

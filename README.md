@@ -23,6 +23,12 @@ Run:
 snakemake --sdm conda --cores N
 ```
 
+## Pipeline
+
+![Rule graph of the pipeline](docs/figures/pipeline_rulegraph.png)
+
+Grey: data and subsampling. Dark blue: ARACNe-AP networks. Light blue: rewiring between AD and CT (analyses 1–3 and 6). Green: networks vs differential expression and AD risk genes (analyses 4, 5 and 7). The analyses are summarized in [`docs/analisis.md`](docs/analisis.md).
+
 ## Repository structure
 
 ```
@@ -32,8 +38,9 @@ config/
   ad_risk_genes.tsv    AD risk genes (Bellenguez et al., 2022)
 docs/
   experimental_design.md   study design and methods
+  analisis.md              summary table of the analyses
   paper_design.md          figures, panels and captions
-  figures/                 design diagrams
+  figures/                 design diagrams, pipeline graph and the hand-made panel 1a
 workflow/
   Snakefile            all rules
   envs/                conda environments

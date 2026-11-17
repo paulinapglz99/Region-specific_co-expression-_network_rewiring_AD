@@ -42,7 +42,7 @@ Cada paso responde una pregunta que deja abierto el anterior.
 
 Pasos 0–4 → **Figura 1** · pasos 5–7 → **Figura 2**. La robustez (análisis 2, sensibilidad al umbral, estabilidad entre réplicas) y los genes de riesgo (análisis 7) van al suplemento.
 
-**Dónde están las figuras.** Cada figura tiene su carpeta en `results/figures/` (por ejemplo `results/figures/figure1/`), con la figura completa (`figure1.pdf`) y un archivo por panel (`1a.pdf`, `1b.pdf`…), en PDF y JPEG. Los paneles hechos a mano se guardan en la misma carpeta: el pipeline nunca borra la carpeta, solo escribe sus propios archivos.
+**Dónde están las figuras.** Cada figura tiene su carpeta en `results/figures/` (por ejemplo `results/figures/figure1/`), con la figura completa (`figure1.pdf`) y un archivo por panel (`1a.pdf`, `1b.pdf`…), en PDF y JPEG. El panel 1a está hecho a mano: su original es `docs/figures/figure1a.pdf` (versionado), y el pipeline lo inserta en la Figura 1 y lo copia a la carpeta como `1a.pdf`. Para cambiarlo, se edita el original y se vuelve a correr el pipeline.
 
 Los pies de figura son una propuesta en inglés, como el texto de las figuras. Los números entre corchetes se completan con los resultados reales.
 
@@ -50,11 +50,11 @@ Los pies de figura son una propuesta en inglés, como el texto de las figuras. L
 
 **Mensaje:** con una comparación justa entre regiones, AD recablea las redes de forma distinta en cada región, y más en la región que se afecta antes (TCX) que en la preservada (CBE).
 
-Se genera con la regla `plot_network_metrics`, salvo el panel a. La figura completa (`figure1.pdf`) deja un espacio vacío para el panel a, que se inserta al armar la versión final.
+Se genera con la regla `plot_network_metrics`. El panel a está hecho a mano (`docs/figures/figure1a.pdf`) y la regla lo inserta en la figura como imagen.
 
 ### Paneles
 
-**a. Esquema del estudio (hecho a mano, `1a.pdf`).** Un cerebro con las cinco regiones marcadas. De cada región sale un par de redes de ejemplo, CT → AD, con la J entre ellas. Le muestra al lector, antes de cualquier número, qué es una red de co-expresión, qué se compara (CT contra AD dentro de cada región) y qué mide la J.
+**a. Esquema del estudio (hecho a mano, `docs/figures/figure1a.pdf`).** Un cerebro con las cinco regiones marcadas. De cada región sale un par de redes de ejemplo, CT → AD, con la J entre ellas. Le muestra al lector, antes de cualquier número, qué es una red de co-expresión, qué se compara (CT contra AD dentro de cada región) y qué mide la J.
 
 > Al modificarlo, para que coincida con el diseño: la versión actual muestra el hipocampo (HCN), que no está en el diseño, y le falta la corteza cingulada anterior (ACC). Las etiquetas deben ser las del resto de las figuras (CT en vez de CTL, TCX en vez de TC, CBE en vez de CRB). Los valores de J deben ser los resultados reales del análisis 1, o indicarse como ilustrativos.
 
@@ -171,5 +171,6 @@ Se genera con la regla `plot_networks_de`, en `results/figures/figureS4/`.
 - **Enriquecimiento funcional:** GO Biological Process (`config/config.yaml`, `go`).
 - **Genes de riesgo:** solo los 55 genes de los 42 loci nuevos de Bellenguez et al. (2022); los 33 loci ya conocidos no se incluyen.
 - **Red consenso:** se quitó del diseño, porque ningún análisis la usa.
+- **Control de densidad (J con los top-k enlaces):** se quitó del diseño. Las redes que se comparan tienen el mismo n, y el grado medio de AD y CT se muestra en la Figura 1e.
 - **Validación con redes simuladas:** prueba interna, sin figura en el paper.
-- **Esquema del estudio en la Figura 1:** sí, como panel 1a, hecho a mano (`results/figures/figure1/1a.pdf`).
+- **Esquema del estudio en la Figura 1:** sí, como panel 1a, hecho a mano (`docs/figures/figure1a.pdf`).

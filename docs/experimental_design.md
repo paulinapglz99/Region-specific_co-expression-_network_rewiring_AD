@@ -126,7 +126,7 @@ Cada red es **una corrida completa de ARACNe-AP** (Lachmann et al., 2016) **sobr
 
 Leiden se usa en lugar de Louvain porque garantiza que cada comunidad esté conectada internamente; Louvain puede producir comunidades formadas por partes desconectadas.
 
-**Control de densidad:** la J se repite con los top-k enlaces de cada red, para descartar que una diferencia de densidad entre AD y CT domine el resultado.
+**Densidad:** las dos redes que se comparan tienen el mismo n, así que no se recortan a un número fijo de enlaces. El grado medio de AD y de CT se reporta (Figura 1e) para ver si difieren en número de enlaces.
 
 ### Dos niveles de control del error
 
@@ -410,7 +410,7 @@ El pipeline está en Snakemake (`workflow/Snakefile`), con un entorno de conda p
 | Genes de riesgo (análisis 7) | `risk_genes` | `results/genes/risk_genes_tests.tsv` y `risk_genes_table.tsv` | 2 |
 | Figura 2 (análisis 4 y 5) y Figura S4 (robustez del análisis 4) | `plot_networks_de` | `results/figures/figure2/` y `results/figures/figureS4/` | 2 carpetas |
 
-**Figuras.** Cada figura tiene su carpeta en `results/figures/`, con la figura completa y un archivo por panel, en PDF y JPEG. Por ejemplo, `results/figures/figure1/` contiene `figure1.pdf` y los paneles `1b.pdf` … `1e.pdf`; el panel `1a.pdf` (esquema del estudio) está hecho a mano y se guarda en la misma carpeta. Las reglas declaran solo la figura completa, nunca la carpeta, para que Snakemake no borre los paneles hechos a mano. La Figura S1 (demografía) la hace `plot_demographics`. Con redes simuladas, las figuras van a `results/simulated/{escenario}/figures/`.
+**Figuras.** Cada figura tiene su carpeta en `results/figures/`, con la figura completa y un archivo por panel, en PDF y JPEG. Por ejemplo, `results/figures/figure1/` contiene `figure1.pdf` y los paneles `1b.pdf` … `1e.pdf`; el panel 1a (esquema del estudio) está hecho a mano: su original es `docs/figures/figure1a.pdf`, y `plot_network_metrics` lo inserta en la figura y lo copia a la carpeta como `1a.pdf`. Las reglas declaran solo la figura completa, nunca la carpeta, para que Snakemake no borre archivos que no hizo. La Figura S1 (demografía) la hace `plot_demographics`. Con redes simuladas, las figuras van a `results/simulated/{escenario}/figures/`.
 
 La prueba común de los análisis 4, 5 y 7 está en `workflow/scripts/R/de_utils.R` (`overlap_test`).
 

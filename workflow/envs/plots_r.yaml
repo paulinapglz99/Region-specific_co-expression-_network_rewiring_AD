@@ -11,3 +11,4 @@ dependencies:
   - r-ggplot2=4.0.3
   - r-patchwork=1.3.2
   - r-scales=1.4.0
+  - r-pdftools=3.9.1 # reads the hand-made panel 1a (PDF) into Figure 1
